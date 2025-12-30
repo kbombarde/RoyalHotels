@@ -1,0 +1,5 @@
+/* Optional overrides – Tailwind handles most styling */
+
+table tr:hover {
+  transition: background-color 0.15s ease-in-out;
+}
