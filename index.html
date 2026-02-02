@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAP BO Browser | Red Theme</title>
+    <title>SAP BO Explorer | Red Theme</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         :root {
@@ -16,6 +16,7 @@
             --text-secondary: #757575;
             --border: #e0e0e0;
             --shadow: 0 2px 5px rgba(0,0,0,0.1);
+            --selected-bg: #ffebee; /* Light red for highlighted items */
         }
 
         body {
@@ -27,7 +28,6 @@
             color: var(--text-main);
         }
 
-        /* Sidebar - Material Style */
         #sidebar {
             width: 280px;
             background: var(--surface);
@@ -76,7 +76,6 @@
         }
         .nav-btn.active i { color: var(--md-red); }
 
-        /* Main Content area */
         #main {
             flex: 1;
             display: flex;
@@ -110,13 +109,22 @@
             align-items: center;
             padding: 12px 24px;
             border-bottom: 1px solid #f0f0f0;
-            transition: background 0.2s;
+            transition: all 0.2s;
             cursor: pointer;
+            position: relative;
         }
 
         .item-row:hover { background: #fff5f5; }
+        
+        /* Highlighted State */
+        .item-row.selected {
+            background: var(--selected-bg);
+            border-left: 4px solid var(--md-red);
+        }
 
         .item-icon { margin-right: 16px; color: var(--text-secondary); }
+        .item-row.selected .item-icon { color: var(--md-red); }
+
         .item-info { flex: 1; }
         .item-name { font-size: 15px; margin-bottom: 2px; }
         .item-meta { font-size: 12px; color: var(--text-secondary); }
@@ -133,12 +141,7 @@
 
         .drill-icon-btn:hover { background: var(--md-red-light); }
 
-        /* Token Input Area */
-        .config-box {
-            padding: 20px;
-            border-top: 1px solid var(--border);
-        }
-
+        .config-box { padding: 20px; border-top: 1px solid var(--border); }
         .config-box input {
             width: 100%;
             padding: 10px;
@@ -148,7 +151,6 @@
             outline-color: var(--md-red);
         }
 
-        /* Selection List Panel */
         #selection-box {
             background: #fff;
             margin: 0 24px 24px 24px;
@@ -255,6 +257,7 @@
 
         let selectedCuids = new Set();
         let currentCategory = '';
+        let currentData = []; // Store current view data for easy re-rendering
 
         async function apiRequest(endpoint, method = 'GET', body = null) {
             const token = document.getElementById('token').value;
@@ -273,10 +276,8 @@
         }
 
         async function loadRoot(category, btnElement) {
-            // Update UI Active State
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             btnElement.classList.add('active');
-
             currentCategory = category;
             document.getElementById('breadcrumb').innerText = category;
             
@@ -290,11 +291,10 @@
         async function fetchItems(endpoint) {
             const container = document.getElementById('content-area');
             container.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
-
             try {
                 const data = await apiRequest(endpoint);
-                const entries = data.entries || data.folders?.entries || [];
-                renderList(entries);
+                currentData = data.entries || data.folders?.entries || [];
+                renderList(currentData);
             } catch (err) {
                 container.innerHTML = `<div class="empty-state" style="color:var(--md-red)">Error: ${err.message}</div>`;
             }
@@ -303,13 +303,11 @@
         async function fetchCmsQuery(parentCuid) {
             const container = document.getElementById('content-area');
             container.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
-
             const query = `SELECT SI_ID, SI_CUID, SI_NAME, SI_KIND FROM CI_APPOBJECTS, CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${parentCuid}' ORDER BY SI_KIND`;
-            
             try {
                 const data = await apiRequest('/cmsquery', 'POST', { query });
-                const entries = data.entries || [];
-                renderList(entries);
+                currentData = data.entries || [];
+                renderList(currentData);
             } catch (err) {
                 container.innerHTML = `<div class="empty-state" style="color:var(--md-red)">Error: ${err.message}</div>`;
             }
@@ -325,27 +323,32 @@
             }
 
             items.forEach(item => {
+                const cuid = item.cuid || item.SI_CUID;
+                const isSelected = selectedCuids.has(cuid);
+                
                 const row = document.createElement('div');
-                row.className = 'item-row';
+                row.className = `item-row ${isSelected ? 'selected' : ''}`;
+                row.setAttribute('data-cuid', cuid);
                 
                 row.onclick = (e) => {
                     if(!e.target.closest('.drill-icon-btn')) {
-                        toggleSelection(item.cuid || item.SI_CUID);
+                        toggleSelection(cuid, row);
                     }
                 };
 
                 const kind = item.kind || item.SI_KIND || item.type;
                 const isFolder = (kind === 'Folder');
-                const iconName = isFolder ? 'folder' : 'insert_drive_file';
+                // Use a check circle if selected, otherwise standard file/folder icon
+                const iconName = isSelected ? 'check_circle' : (isFolder ? 'folder' : 'insert_drive_file');
 
                 row.innerHTML = `
                     <i class="material-icons item-icon">${iconName}</i>
                     <div class="item-info">
                         <div class="item-name">${item.name || item.SI_NAME}</div>
-                        <div class="item-meta">${kind} • ${item.cuid || item.SI_CUID}</div>
+                        <div class="item-meta">${kind} • ${cuid}</div>
                     </div>
                     ${isFolder ? `
-                        <div class="drill-icon-btn" onclick="drillDown('${item.id || item.SI_ID}', '${item.cuid || item.SI_CUID}')">
+                        <div class="drill-icon-btn" onclick="drillDown('${item.id || item.SI_ID}', '${cuid}')">
                             <i class="material-icons">chevron_right</i>
                         </div>` : ''}
                 `;
@@ -353,20 +356,18 @@
             });
         }
 
-        function drillDown(id, cuid) {
-            if (currentCategory === 'Reports') {
-                fetchItems(`/folders/${id}/children`);
-            } else {
-                fetchCmsQuery(cuid);
-            }
-            document.getElementById('breadcrumb').innerText += ` > ${id}`;
-        }
-
-        function toggleSelection(cuid) {
+        function toggleSelection(cuid, rowElement) {
             if (selectedCuids.has(cuid)) {
                 selectedCuids.delete(cuid);
+                rowElement.classList.remove('selected');
+                // Revert icon
+                const icon = rowElement.querySelector('.item-icon');
+                const isFolder = rowElement.innerHTML.includes('chevron_right');
+                icon.innerText = isFolder ? 'folder' : 'insert_drive_file';
             } else {
                 selectedCuids.add(cuid);
+                rowElement.classList.add('selected');
+                rowElement.querySelector('.item-icon').innerText = 'check_circle';
             }
             updateSelectionUI();
         }
@@ -378,6 +379,15 @@
                 return;
             }
             list.innerText = Array.from(selectedCuids).join(', ');
+        }
+
+        function drillDown(id, cuid) {
+            if (currentCategory === 'Reports') {
+                fetchItems(`/folders/${id}/children`);
+            } else {
+                fetchCmsQuery(cuid);
+            }
+            document.getElementById('breadcrumb').innerText += ` > ${id}`;
         }
 
         function copyCuids() {
