@@ -7,9 +7,9 @@
 <style>
 :root{
   --bg:#ffffff;
-  --panel:#f8fafc;
+  --panel:#f9fafb;
   --border:#e5e7eb;
-  --primary:#dc2626;        /* RED */
+  --primary:#dc2626;
   --primary-soft:#fee2e2;
   --text:#111827;
   --muted:#6b7280;
@@ -17,33 +17,22 @@
 
 *{box-sizing:border-box;font-family:system-ui,Segoe UI;}
 
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-}
-
+body{margin:0;background:var(--bg);color:var(--text);}
 header{
   padding:14px 20px;
   font-size:18px;
   font-weight:600;
   border-bottom:1px solid var(--border);
-  background:#fff;
 }
 
-/* ---------- AUTH ---------- */
+.hidden{display:none;}
+
 .auth{
   max-width:420px;
   margin:80px auto;
   padding:24px;
   border:1px solid var(--border);
   border-radius:10px;
-  background:#fff;
-}
-
-.auth h3{
-  margin-top:0;
-  margin-bottom:14px;
 }
 
 .auth input{
@@ -52,7 +41,6 @@ header{
   padding:10px;
   border:1px solid var(--border);
   border-radius:6px;
-  font-size:14px;
 }
 
 .auth button{
@@ -66,23 +54,18 @@ header{
   cursor:pointer;
 }
 
-.auth button:hover{opacity:.9;}
-#status{margin-top:8px;font-size:13px;color:var(--muted);}
+#status{font-size:13px;color:var(--muted);}
 
-/* ---------- APP LAYOUT ---------- */
 .app{
   display:grid;
   grid-template-columns:220px 1fr 320px;
   height:calc(100vh - 56px);
 }
 
-.hidden{display:none;}
-
-/* ---------- NAV ---------- */
+/* NAV */
 .nav{
   border-right:1px solid var(--border);
   padding:14px;
-  background:#fff;
 }
 
 .nav button{
@@ -93,7 +76,6 @@ header{
   border:1px solid var(--border);
   border-radius:6px;
   cursor:pointer;
-  font-weight:500;
 }
 
 .nav button.active{
@@ -101,18 +83,12 @@ header{
   color:var(--primary);
 }
 
-/* ---------- MAIN ---------- */
-.main{
-  display:flex;
-  flex-direction:column;
-}
-
+/* MAIN */
+.main{display:flex;flex-direction:column;}
 .toolbar{
   padding:10px;
   border-bottom:1px solid var(--border);
-  background:#fff;
 }
-
 .toolbar input{
   width:100%;
   padding:10px;
@@ -123,22 +99,21 @@ header{
 .breadcrumbs{
   padding:8px 14px;
   font-size:13px;
-  color:var(--muted);
   border-bottom:1px solid var(--border);
 }
 
 .breadcrumbs span{
-  cursor:pointer;
   color:var(--primary);
+  cursor:pointer;
 }
 
 .list{
   padding:14px;
-  overflow:auto;
   background:var(--panel);
+  overflow:auto;
 }
 
-/* ---------- ITEMS ---------- */
+/* ITEM */
 .item{
   display:flex;
   align-items:center;
@@ -167,20 +142,19 @@ header{
 .name{flex:1;}
 .small{font-size:12px;color:var(--muted);}
 
-/* ---------- RIGHT ---------- */
+/* RIGHT */
 .right{
   border-left:1px solid var(--border);
   padding:14px;
-  background:#fff;
   display:flex;
   flex-direction:column;
 }
 
 textarea{
   flex:1;
+  padding:10px;
   border:1px solid var(--border);
   border-radius:6px;
-  padding:10px;
   resize:none;
 }
 
@@ -192,7 +166,6 @@ textarea{
   border:none;
   border-radius:6px;
   font-weight:600;
-  cursor:pointer;
 }
 </style>
 </head>
@@ -200,8 +173,8 @@ textarea{
 <body>
 <header>SAP BO Object Picker</header>
 
-<!-- AUTH -->
-<div class="auth" id="auth">
+<!-- LOGIN -->
+<div class="auth hidden" id="auth">
   <h3>Login</h3>
   <input id="server" placeholder="Server URL (https://bo.company.com)">
   <input id="user" placeholder="Username">
@@ -234,25 +207,29 @@ textarea{
 </div>
 
 <script>
-/* ---------- STATE ---------- */
+/* ===== STATE ===== */
 let BASE="", TOKEN="";
 let cache=[], breadcrumbs=[], currentMode="";
+let authFailures=0;
+const MAX_AUTH_FAILURES=3;
 const selected=new Set();
 
 const ROOT_UNIVERSE_CUID="FA_UniversesRoot";
 const ROOT_CONNECTION_CUID="FA_ConnectionsRoot";
 
-/* ---------- INIT ---------- */
+/* ===== INIT ===== */
 (function(){
   const s=JSON.parse(localStorage.getItem("boSession")||"null");
   if(s?.token && s?.server){
     TOKEN=s.token;
     BASE=`${s.server}/biprws/v1`;
     showApp();
+  }else{
+    auth.classList.remove("hidden");
   }
 })();
 
-/* ---------- LOGIN ---------- */
+/* ===== LOGIN ===== */
 async function login(){
   const s=server.value.trim().replace(/\/$/,"");
   status.textContent="Authenticating…";
@@ -260,7 +237,11 @@ async function login(){
   const r=await fetch(`${s}/biprws/logon/long`,{
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({userName:user.value,password:pass.value,auth:"secEnterprise"})
+    body:JSON.stringify({
+      userName:user.value,
+      password:pass.value,
+      auth:"secEnterprise"
+    })
   });
 
   if(!r.ok){status.textContent="Login failed";return;}
@@ -268,6 +249,7 @@ async function login(){
   const xml=await r.text();
   TOKEN=xml.match(/<attr name="logonToken".*?>(.*?)</)?.[1];
   BASE=`${s}/biprws/v1`;
+
   localStorage.setItem("boSession",JSON.stringify({token:TOKEN,server:s}));
   showApp();
 }
@@ -277,7 +259,7 @@ function showApp(){
   app.classList.remove("hidden");
 }
 
-/* ---------- API ---------- */
+/* ===== API (SAFE) ===== */
 async function api(path,method="GET",body){
   const r=await fetch(BASE+path,{
     method,
@@ -287,14 +269,28 @@ async function api(path,method="GET",body){
     },
     body:body?JSON.stringify(body):null
   });
+
   if(r.status===401||r.status===403){
-    localStorage.removeItem("boSession");
-    location.reload();
+    authFailures++;
+    if(authFailures>=MAX_AUTH_FAILURES){
+      logout();
+      throw new Error("Session expired");
+    }
+    return {entries:[]};
   }
+
+  authFailures=0;
   return r.json();
 }
 
-/* ---------- REPORTS ---------- */
+function logout(){
+  localStorage.removeItem("boSession");
+  authFailures=0;
+  app.classList.add("hidden");
+  auth.classList.remove("hidden");
+}
+
+/* ===== REPORTS ===== */
 async function loadReports(btn){
   activate(btn);
   currentMode="reports";
@@ -311,7 +307,7 @@ async function openFolder(id,name){
   render(d.entries||[]);
 }
 
-/* ---------- CMS ---------- */
+/* ===== CMS ===== */
 async function loadUniverses(btn){
   activate(btn);
   currentMode="cms";
@@ -329,12 +325,15 @@ async function loadConnections(btn){
 }
 
 async function cms(parent){
-  const q=`SELECT SI_ID,SI_CUID,SI_NAME,SI_KIND FROM CI_APPOBJECTS,CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${parent}' ORDER BY SI_KIND`;
+  const q=`SELECT SI_ID,SI_CUID,SI_NAME,SI_KIND
+           FROM CI_APPOBJECTS,CI_SYSTEMOBJECTS
+           WHERE SI_PARENT_CUID='${parent}'
+           ORDER BY SI_KIND`;
   const d=await api("/cmsquery","POST",{query:q});
   render(d.entries||[]);
 }
 
-/* ---------- RENDER ---------- */
+/* ===== RENDER ===== */
 function render(items){
   cache=items;
   list.innerHTML="";
@@ -366,7 +365,7 @@ function render(items){
   });
 }
 
-/* ---------- BREADCRUMBS ---------- */
+/* ===== BREADCRUMBS ===== */
 function updateCrumbs(){
   crumbs.innerHTML=breadcrumbs.map((b,i)=>
     `<span onclick="crumb(${i})">${b.label}</span>`
@@ -382,7 +381,7 @@ function crumb(i){
     : cms(b.cuid);
 }
 
-/* ---------- UTIL ---------- */
+/* ===== UTIL ===== */
 function filter(t){
   t=t.toLowerCase();
   render(cache.filter(o=>o.name.toLowerCase().includes(t)||(o.cuid||"").toLowerCase().includes(t)));
@@ -398,7 +397,8 @@ function activate(btn){
   btn.classList.add("active");
 }
 function folderIcon(){
-  return `<svg class="icon" viewBox="0 0 24 24"><path d="M10 4l2 2h8v12H4V4z"/></svg>`;
+  return `<svg class="icon" viewBox="0 0 24 24">
+    <path d="M10 4l2 2h8v12H4V4z"/></svg>`;
 }
 </script>
 </body>
