@@ -30,56 +30,36 @@ header{
 
 .app{
   display:grid;
-  grid-template-columns:320px 1fr 320px;
+  grid-template-columns:220px 1fr 300px;
   height:calc(100vh - 54px);
 }
 
-/* ---------- AUTH ---------- */
-.auth{
-  padding:16px;
+/* ---------- LEFT NAV ---------- */
+.nav{
   border-right:1px solid var(--border);
+  padding:14px;
 }
 
-.auth h3{
-  margin-top:0;
-}
-
-.auth input{
+.nav button{
   width:100%;
-  margin-bottom:10px;
   padding:10px;
-  background:var(--panel);
+  margin-bottom:10px;
+  background:transparent;
   border:1px solid var(--border);
   color:var(--text);
   border-radius:6px;
-}
-
-.auth button{
-  width:100%;
-  padding:10px;
-  background:var(--accent);
-  border:none;
-  border-radius:6px;
-  font-weight:600;
   cursor:pointer;
 }
 
-.status{
-  margin-top:8px;
-  font-size:13px;
+.nav button:hover,
+.nav button.active{
+  border-color:var(--accent);
 }
 
 /* ---------- MAIN ---------- */
 .main{
-  opacity:.35;
-  pointer-events:none;
   display:flex;
   flex-direction:column;
-}
-
-.main.active{
-  opacity:1;
-  pointer-events:auto;
 }
 
 .toolbar{
@@ -152,173 +132,215 @@ textarea{
   border-radius:6px;
   cursor:pointer;
 }
+
+/* ---------- AUTH ---------- */
+.auth{
+  max-width:420px;
+  margin:80px auto;
+  padding:20px;
+  border:1px solid var(--border);
+  border-radius:8px;
+}
+
+.auth input{
+  width:100%;
+  margin-bottom:10px;
+  padding:10px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  color:var(--text);
+  border-radius:6px;
+}
+
+.auth button{
+  width:100%;
+  padding:10px;
+  background:var(--accent);
+  border:none;
+  font-weight:600;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+.hidden{display:none;}
 </style>
 </head>
 
 <body>
 <header>SAP BO Object Picker</header>
 
-<div class="app">
-
 <!-- AUTH -->
-<div class="auth">
-  <h3>Authentication</h3>
-
+<div class="auth" id="auth">
+  <h3>Login</h3>
   <input id="server" placeholder="Server URL (https://bo.company.com)">
   <input id="user" placeholder="Username">
   <input id="pass" type="password" placeholder="Password">
-
   <button onclick="login()">Login</button>
-  <div class="status" id="status"></div>
+  <div id="status"></div>
 </div>
 
-<!-- MAIN -->
-<div class="main" id="main">
-  <div class="toolbar">
-    <input placeholder="Search by Name or CUID…" oninput="filterList(this.value)">
+<!-- APP -->
+<div class="app hidden" id="app">
+
+  <div class="nav">
+    <button onclick="loadReports(this)">Reports</button>
+    <button onclick="loadUniverses(this)">Universes</button>
+    <button onclick="loadConnections(this)">Connections</button>
   </div>
-  <div class="list" id="list"></div>
-</div>
 
-<!-- RIGHT -->
-<div class="right">
-  <h4>Selected CUIDs</h4>
-  <textarea id="cuids" readonly></textarea>
-  <button class="copy" onclick="copyCuids()">Copy</button>
-</div>
+  <div class="main">
+    <div class="toolbar">
+      <input placeholder="Search…" oninput="filter(this.value)">
+    </div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <div class="right">
+    <h4>Selected CUIDs</h4>
+    <textarea id="cuids" readonly></textarea>
+    <button class="copy" onclick="copy()">Copy</button>
+  </div>
 
 </div>
 
 <script>
-let BASE = "";
-let TOKEN = null;
-let cache = [];
-const selected = new Set();
+let BASE="", TOKEN="";
+let cache=[];
+const selected=new Set();
 
 /* ---------- LOGIN ---------- */
 async function login(){
-  const serverUrl = server.value.trim().replace(/\/$/, "");
-  const username = user.value.trim();
-  const password = pass.value;
+  const s=server.value.trim().replace(/\/$/,"");
+  status.textContent="Authenticating…";
 
-  if(!serverUrl || !username || !password){
-    status.textContent = "All fields are required";
-    return;
-  }
+  const r=await fetch(`${s}/biprws/logon/long`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      userName:user.value,
+      password:pass.value,
+      auth:"secEnterprise"
+    })
+  });
 
-  status.textContent = "Authenticating…";
+  if(!r.ok){status.textContent="Login failed";return;}
 
-  try{
-    const res = await fetch(`${serverUrl}/biprws/logon/long`,{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        userName: username,
-        password: password,
-        auth: "secEnterprise"
-      })
-    });
+  const xml=await r.text();
+  TOKEN=xml.match(/<attr name="logonToken".*?>(.*?)</)?.[1];
+  BASE=`${s}/biprws/v1`;
 
-    if(!res.ok) throw new Error("Login failed");
-
-    const xml = await res.text();
-    TOKEN = xml.match(/<attr name="logonToken".*?>(.*?)</)?.[1];
-
-    if(!TOKEN) throw new Error("Token not found");
-
-    BASE = `${serverUrl}/biprws/v1`;
-    status.textContent = "Authenticated";
-    main.classList.add("active");
-    loadRoot();
-
-  }catch(e){
-    status.textContent = "Authentication failed";
-  }
+  auth.classList.add("hidden");
+  app.classList.remove("hidden");
 }
 
 /* ---------- API ---------- */
-async function api(path){
-  const r = await fetch(BASE + path,{
-    headers:{"X-SAP-LogonToken":TOKEN}
+async function api(path,method="GET",body){
+  const r=await fetch(BASE+path,{
+    method,
+    headers:{
+      "X-SAP-LogonToken":TOKEN,
+      "Content-Type":"application/json"
+    },
+    body:body?JSON.stringify(body):null
   });
   return r.json();
 }
 
-/* ---------- FOLDERS ---------- */
-async function loadRoot(){
-  const d = await api("/folders");
-  render(d.folders || []);
+/* ---------- REPORTS ---------- */
+async function loadReports(btn){
+  activate(btn);
+  const d=await api("/folders");
+  render(d.folders||[]);
 }
 
 async function openFolder(id){
-  const d = await api(`/folders/${id}/children`);
-  render(d.entries || []);
+  const d=await api(`/folders/${id}/children`);
+  render(d.entries||[]);
+}
+
+/* ---------- CMS QUERY ---------- */
+async function loadUniverses(btn){
+  activate(btn);
+  cmsQuery();
+}
+
+async function loadConnections(btn){
+  activate(btn);
+  cmsQuery();
+}
+
+async function cmsQuery(parentCuid=""){
+  const q=`
+    SELECT SI_ID,SI_CUID,SI_NAME,SI_KIND
+    FROM CI_APPOBJECTS,CI_SYSTEMOBJECTS
+    ${parentCuid?`WHERE SI_PARENT_CUID='${parentCuid}'`:""}
+    ORDER BY SI_KIND`;
+
+  const d=await api("/cmsquery","POST",{query:q});
+  render(d.entries||[]);
 }
 
 /* ---------- RENDER ---------- */
 function render(items){
-  cache = items;
-  list.innerHTML = "";
+  cache=items;
+  list.innerHTML="";
 
   items.forEach(o=>{
-    const isFolder = o.type === "Folder";
-    const cuid = o.cuid;
+    const isFolder=o.kind==="Folder";
+    const div=document.createElement("div");
+    div.className="item";
+    if(selected.has(o.cuid))div.classList.add("selected");
 
-    const div = document.createElement("div");
-    div.className = "item";
-    if(selected.has(cuid)) div.classList.add("selected");
-
-    div.innerHTML = `
-      ${isFolder ? folderIcon() : ""}
+    div.innerHTML=`
+      ${isFolder?folderIcon():""}
       <div class="name">
         ${o.name}
-        <div class="small">${cuid || ""}</div>
+        <div class="small">${o.cuid||""}</div>
       </div>
     `;
 
     if(isFolder){
-      div.querySelector("svg").onclick = e=>{
+      div.querySelector("svg").onclick=e=>{
         e.stopPropagation();
-        openFolder(o.id);
+        cmsQuery(o.cuid);
       };
     }
 
-    div.onclick = ()=>{
-      if(cuid) toggleSelect(cuid, div);
+    div.onclick=()=>{
+      if(o.cuid)toggle(o.cuid,div);
     };
 
     list.appendChild(div);
   });
 }
 
-/* ---------- FILTER ---------- */
-function filterList(term){
-  term = term.toLowerCase();
-  render(cache.filter(o =>
-    o.name.toLowerCase().includes(term) ||
-    (o.cuid || "").toLowerCase().includes(term)
+/* ---------- UI ---------- */
+function filter(t){
+  t=t.toLowerCase();
+  render(cache.filter(o=>
+    o.name.toLowerCase().includes(t)||
+    (o.cuid||"").toLowerCase().includes(t)
   ));
 }
 
-/* ---------- SELECT ---------- */
-function toggleSelect(cuid, el){
-  selected.has(cuid) ? selected.delete(cuid) : selected.add(cuid);
+function toggle(c,el){
+  selected.has(c)?selected.delete(c):selected.add(c);
   el.classList.toggle("selected");
-  cuids.value = [...selected].join("\n");
+  cuids.value=[...selected].join("\n");
 }
 
-function copyCuids(){
-  navigator.clipboard.writeText(cuids.value);
+function copy(){navigator.clipboard.writeText(cuids.value);}
+
+function activate(btn){
+  document.querySelectorAll(".nav button").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
 }
 
 /* ---------- ICON ---------- */
 function folderIcon(){
-  return `
-  <svg class="icon" viewBox="0 0 24 24">
-    <path d="M10 4l2 2h8v12H4V4z"/>
-  </svg>`;
+return `<svg class="icon" viewBox="0 0 24 24">
+<path d="M10 4l2 2h8v12H4V4z"/></svg>`;
 }
 </script>
-
 </body>
 </html>
