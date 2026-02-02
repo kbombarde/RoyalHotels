@@ -6,40 +6,194 @@
 
 <style>
 :root{
-  --bg:#0b1220;--panel:#020617;--border:#1e293b;
-  --accent:#38bdf8;--text:#e5e7eb;--muted:#94a3b8;
+  --bg:#ffffff;
+  --panel:#f8fafc;
+  --border:#e5e7eb;
+  --primary:#dc2626;        /* RED */
+  --primary-soft:#fee2e2;
+  --text:#111827;
+  --muted:#6b7280;
 }
-*{box-sizing:border-box;font-family:system-ui;}
-body{margin:0;background:var(--bg);color:var(--text);}
-header{padding:14px 20px;border-bottom:1px solid var(--border);}
+
+*{box-sizing:border-box;font-family:system-ui,Segoe UI;}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+}
+
+header{
+  padding:14px 20px;
+  font-size:18px;
+  font-weight:600;
+  border-bottom:1px solid var(--border);
+  background:#fff;
+}
+
+/* ---------- AUTH ---------- */
+.auth{
+  max-width:420px;
+  margin:80px auto;
+  padding:24px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#fff;
+}
+
+.auth h3{
+  margin-top:0;
+  margin-bottom:14px;
+}
+
+.auth input{
+  width:100%;
+  margin-bottom:12px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  font-size:14px;
+}
+
+.auth button{
+  width:100%;
+  padding:10px;
+  background:var(--primary);
+  color:#fff;
+  border:none;
+  border-radius:6px;
+  font-weight:600;
+  cursor:pointer;
+}
+
+.auth button:hover{opacity:.9;}
+#status{margin-top:8px;font-size:13px;color:var(--muted);}
+
+/* ---------- APP LAYOUT ---------- */
+.app{
+  display:grid;
+  grid-template-columns:220px 1fr 320px;
+  height:calc(100vh - 56px);
+}
 
 .hidden{display:none;}
-.app{display:grid;grid-template-columns:220px 1fr 300px;height:calc(100vh - 54px);}
-.nav{border-right:1px solid var(--border);padding:14px;}
-.nav button{width:100%;padding:10px;margin-bottom:10px;background:transparent;border:1px solid var(--border);color:var(--text);border-radius:6px;cursor:pointer;}
-.nav button.active{border-color:var(--accent);}
 
-.main{display:flex;flex-direction:column;}
-.toolbar{padding:10px;border-bottom:1px solid var(--border);}
-.toolbar input{width:100%;padding:10px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;}
-.breadcrumbs{padding:8px 14px;font-size:13px;color:var(--muted);}
-.breadcrumbs span{cursor:pointer;}
-.list{padding:14px;overflow:auto;}
+/* ---------- NAV ---------- */
+.nav{
+  border-right:1px solid var(--border);
+  padding:14px;
+  background:#fff;
+}
 
-.item{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer;}
-.item:hover{border-color:var(--accent);}
-.item.selected{background:rgba(56,189,248,.15);}
-.icon{width:16px;height:16px;fill:var(--muted);cursor:pointer;}
+.nav button{
+  width:100%;
+  padding:10px;
+  margin-bottom:10px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:6px;
+  cursor:pointer;
+  font-weight:500;
+}
+
+.nav button.active{
+  border-color:var(--primary);
+  color:var(--primary);
+}
+
+/* ---------- MAIN ---------- */
+.main{
+  display:flex;
+  flex-direction:column;
+}
+
+.toolbar{
+  padding:10px;
+  border-bottom:1px solid var(--border);
+  background:#fff;
+}
+
+.toolbar input{
+  width:100%;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:6px;
+}
+
+.breadcrumbs{
+  padding:8px 14px;
+  font-size:13px;
+  color:var(--muted);
+  border-bottom:1px solid var(--border);
+}
+
+.breadcrumbs span{
+  cursor:pointer;
+  color:var(--primary);
+}
+
+.list{
+  padding:14px;
+  overflow:auto;
+  background:var(--panel);
+}
+
+/* ---------- ITEMS ---------- */
+.item{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  background:#fff;
+  margin-bottom:8px;
+  cursor:pointer;
+}
+
+.item:hover{border-color:var(--primary);}
+.item.selected{
+  background:var(--primary-soft);
+  border-color:var(--primary);
+}
+
+.icon{
+  width:16px;
+  height:16px;
+  fill:var(--primary);
+  cursor:pointer;
+}
+
 .name{flex:1;}
 .small{font-size:12px;color:var(--muted);}
 
-.right{border-left:1px solid var(--border);padding:14px;display:flex;flex-direction:column;}
-textarea{flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:6px;}
-.copy{margin-top:10px;padding:10px;background:var(--accent);border:none;border-radius:6px;font-weight:600;cursor:pointer;}
+/* ---------- RIGHT ---------- */
+.right{
+  border-left:1px solid var(--border);
+  padding:14px;
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+}
 
-.auth{max-width:420px;margin:80px auto;padding:20px;border:1px solid var(--border);border-radius:8px;}
-.auth input{width:100%;margin-bottom:10px;padding:10px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;}
-.auth button{width:100%;padding:10px;background:var(--accent);border:none;border-radius:6px;font-weight:600;}
+textarea{
+  flex:1;
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:10px;
+  resize:none;
+}
+
+.copy{
+  margin-top:10px;
+  padding:10px;
+  background:var(--primary);
+  color:#fff;
+  border:none;
+  border-radius:6px;
+  font-weight:600;
+  cursor:pointer;
+}
 </style>
 </head>
 
@@ -47,7 +201,7 @@ textarea{flex:1;background:var(--panel);border:1px solid var(--border);color:var
 <header>SAP BO Object Picker</header>
 
 <!-- AUTH -->
-<div class="auth hidden" id="auth">
+<div class="auth" id="auth">
   <h3>Login</h3>
   <input id="server" placeholder="Server URL (https://bo.company.com)">
   <input id="user" placeholder="Username">
@@ -82,22 +236,19 @@ textarea{flex:1;background:var(--panel);border:1px solid var(--border);color:var
 <script>
 /* ---------- STATE ---------- */
 let BASE="", TOKEN="";
-let cache=[], breadcrumbs=[];
-let currentMode="";
+let cache=[], breadcrumbs=[], currentMode="";
 const selected=new Set();
 
 const ROOT_UNIVERSE_CUID="FA_UniversesRoot";
 const ROOT_CONNECTION_CUID="FA_ConnectionsRoot";
 
 /* ---------- INIT ---------- */
-(function init(){
-  const saved=JSON.parse(localStorage.getItem("boSession")||"null");
-  if(saved?.token && saved?.server){
-    TOKEN=saved.token;
-    BASE=`${saved.server}/biprws/v1`;
+(function(){
+  const s=JSON.parse(localStorage.getItem("boSession")||"null");
+  if(s?.token && s?.server){
+    TOKEN=s.token;
+    BASE=`${s.server}/biprws/v1`;
     showApp();
-  }else{
-    auth.classList.remove("hidden");
   }
 })();
 
@@ -117,7 +268,6 @@ async function login(){
   const xml=await r.text();
   TOKEN=xml.match(/<attr name="logonToken".*?>(.*?)</)?.[1];
   BASE=`${s}/biprws/v1`;
-
   localStorage.setItem("boSession",JSON.stringify({token:TOKEN,server:s}));
   showApp();
 }
@@ -137,17 +287,11 @@ async function api(path,method="GET",body){
     },
     body:body?JSON.stringify(body):null
   });
-
   if(r.status===401||r.status===403){
-    logout();
-    throw new Error("Session expired");
+    localStorage.removeItem("boSession");
+    location.reload();
   }
   return r.json();
-}
-
-function logout(){
-  localStorage.removeItem("boSession");
-  location.reload();
 }
 
 /* ---------- REPORTS ---------- */
@@ -170,7 +314,7 @@ async function openFolder(id,name){
 /* ---------- CMS ---------- */
 async function loadUniverses(btn){
   activate(btn);
-  currentMode="universe";
+  currentMode="cms";
   breadcrumbs=[{label:"Universes",cuid:ROOT_UNIVERSE_CUID}];
   updateCrumbs();
   cms(ROOT_UNIVERSE_CUID);
@@ -178,14 +322,14 @@ async function loadUniverses(btn){
 
 async function loadConnections(btn){
   activate(btn);
-  currentMode="connection";
+  currentMode="cms";
   breadcrumbs=[{label:"Connections",cuid:ROOT_CONNECTION_CUID}];
   updateCrumbs();
   cms(ROOT_CONNECTION_CUID);
 }
 
-async function cms(parentCuid){
-  const q=`SELECT SI_ID,SI_CUID,SI_NAME,SI_KIND FROM CI_APPOBJECTS,CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${parentCuid}' ORDER BY SI_KIND`;
+async function cms(parent){
+  const q=`SELECT SI_ID,SI_CUID,SI_NAME,SI_KIND FROM CI_APPOBJECTS,CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${parent}' ORDER BY SI_KIND`;
   const d=await api("/cmsquery","POST",{query:q});
   render(d.entries||[]);
 }
@@ -229,16 +373,13 @@ function updateCrumbs(){
   ).join(" / ");
 }
 
-async function crumb(i){
+function crumb(i){
   breadcrumbs=breadcrumbs.slice(0,i+1);
   updateCrumbs();
   const b=breadcrumbs[i];
-  if(currentMode==="reports"){
-    if(!b.id) loadReports(document.querySelector(".nav button.active"));
-    else openFolder(b.id,b.label);
-  }else{
-    cms(b.cuid);
-  }
+  currentMode==="reports"
+    ? (b.id?openFolder(b.id,b.label):loadReports(document.querySelector(".nav button.active")))
+    : cms(b.cuid);
 }
 
 /* ---------- UTIL ---------- */
