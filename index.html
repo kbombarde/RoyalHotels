@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SAP BO Object Picker</title>
+
+<style>
+:root{
+  --bg:#0b1220;
+  --panel:#020617;
+  --border:#1e293b;
+  --accent:#38bdf8;
+  --text:#e5e7eb;
+  --muted:#94a3b8;
+  --disabled:#334155;
+}
+
+*{box-sizing:border-box;font-family:system-ui;}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+}
+
+header{
+  padding:14px 20px;
+  font-size:18px;
+  border-bottom:1px solid var(--border);
+}
+
+.app{
+  display:grid;
+  grid-template-columns:300px 1fr 320px;
+  height:calc(100vh - 54px);
+}
+
+/* ---------- AUTH ---------- */
+.auth{
+  padding:16px;
+  border-right:1px solid var(--border);
+}
+
+.auth input{
+  width:100%;
+  margin-bottom:10px;
+  padding:10px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  color:var(--text);
+  border-radius:6px;
+}
+
+.auth button{
+  width:100%;
+  padding:10px;
+  background:var(--accent);
+  border:none;
+  border-radius:6px;
+  font-weight:600;
+  cursor:pointer;
+}
+
+.status{
+  margin-top:8px;
+  font-size:13px;
+}
+
+/* ---------- MAIN ---------- */
+.main{
+  opacity:.3;
+  pointer-events:none;
+  display:flex;
+  flex-direction:column;
+}
+
+.main.active{
+  opacity:1;
+  pointer-events:auto;
+}
+
+.toolbar{
+  padding:10px;
+  border-bottom:1px solid var(--border);
+}
+
+.toolbar input{
+  width:100%;
+  padding:10px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  color:var(--text);
+  border-radius:6px;
+}
+
+.list{
+  padding:14px;
+  overflow:auto;
+}
+
+.item{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:6px;
+  margin-bottom:8px;
+}
+
+.item:hover{border-color:var(--accent);}
+.item.selected{background:rgba(56,189,248,.15);}
+
+.icon{width:16px;height:16px;fill:var(--muted);cursor:pointer;}
+.name{flex:1;}
+.small{font-size:12px;color:var(--muted);}
+
+/* ---------- RIGHT ---------- */
+.right{
+  border-left:1px solid var(--border);
+  padding:14px;
+  display:flex;
+  flex-direction:column;
+}
+
+textarea{
+  flex:1;
+  background:var(--panel);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:10px;
+  border-radius:6px;
+  resize:none;
+}
+
+.copy{
+  margin-top:10px;
+  padding:10px;
+  background:var(--accent);
+  border:none;
+  font-weight:600;
+  border-radius:6px;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+<header>SAP BO Object Picker</header>
+
+<div class="app">
+
+<!-- AUTH -->
+<div class="auth">
+  <h3>Authentication</h3>
+  <input id="user" placeholder="Username">
+  <input id="pass" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+  <div class="status" id="status"></div>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="main">
+  <div class="toolbar">
+    <input placeholder="Search…" oninput="filter(this.value)">
+  </div>
+  <div class="list" id="list"></div>
+</div>
+
+<!-- RIGHT -->
+<div class="right">
+  <h4>Selected CUIDs</h4>
+  <textarea id="cuids" readonly></textarea>
+  <button class="copy" onclick="copy()">Copy</button>
+</div>
+
+</div>
+
+<script>
+const BASE="/biprws/v1";
+let TOKEN=null;
+let cache=[];
+const selected=new Set();
+
+/* ---------- LOGIN ---------- */
+async function login(){
+  const u=user.value,p=pass.value;
+  status.textContent="Authenticating…";
+
+  const res=await fetch("/biprws/logon/long",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({userName:u,password:p,auth:"secEnterprise"})
+  });
+
+  if(!res.ok){status.textContent="Login failed";return;}
+
+  const xml=await res.text();
+  TOKEN=xml.match(/<attr name="logonToken".*?>(.*?)</)[1];
+
+  status.textContent="Authenticated";
+  main.classList.add("active");
+  loadRoot();
+}
+
+/* ---------- FETCH ---------- */
+async function api(url){
+  const r=await fetch(BASE+url,{headers:{"X-SAP-LogonToken":TOKEN}});
+  return r.json();
+}
+
+/* ---------- FOLDERS ---------- */
+async function loadRoot(){
+  const d=await api("/folders");
+  render(d.folders);
+}
+
+async function openFolder(id){
+  const d=await api(`/folders/${id}/children`);
+  render(d.entries);
+}
+
+/* ---------- RENDER ---------- */
+function render(items){
+  cache=items;
+  list.innerHTML="";
+  items.forEach(o=>{
+    const isFolder=o.type==="Folder";
+    const div=document.createElement("div");
+    div.className="item";
+    if(selected.has(o.cuid))div.classList.add("selected");
+
+    div.innerHTML=`
+      ${isFolder?folderIcon():""}
+      <div class="name">${o.name}<div class="small">${o.cuid||""}</div></div>
+    `;
+
+    if(isFolder){
+      div.querySelector("svg").onclick=e=>{
+        e.stopPropagation();openFolder(o.id);
+      };
+    }
+
+    div.onclick=()=>toggle(o.cuid,div);
+    list.appendChild(div);
+  });
+}
+
+/* ---------- FILTER ---------- */
+function filter(t){
+  render(cache.filter(o=>
+    o.name.toLowerCase().includes(t.toLowerCase())||
+    (o.cuid||"").toLowerCase().includes(t.toLowerCase())
+  ));
+}
+
+/* ---------- SELECT ---------- */
+function toggle(c,el){
+  if(!c)return;
+  selected.has(c)?selected.delete(c):selected.add(c);
+  el.classList.toggle("selected");
+  cuids.value=[...selected].join("\n");
+}
+
+function copy(){
+  navigator.clipboard.writeText(cuids.value);
+}
+
+/* ---------- ICON ---------- */
+function folderIcon(){
+return `<svg class="icon" viewBox="0 0 24 24">
+<path d="M10 4l2 2h8v12H4V4z"/></svg>`;
+}
+</script>
+</body>
+</html>
