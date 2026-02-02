@@ -62,6 +62,7 @@ header{
   height:calc(100vh - 56px);
 }
 
+.app.disabled{opacity:0.5;pointer-events:none}
 /* NAV */
 .nav{
   border-right:1px solid var(--border);
@@ -219,11 +220,35 @@ const ROOT_CONNECTION_CUID="FA_ConnectionsRoot";
 
 /* ===== INIT ===== */
 (function(){
+  // get DOM refs early
+  window.auth = document.getElementById("auth");
+  window.app = document.getElementById("app");
+  window.status = document.getElementById("status");
+  window.server = document.getElementById("server");
+  window.user = document.getElementById("user");
+  window.pass = document.getElementById("pass");
+  window.list = document.getElementById("list");
+  window.crumbs = document.getElementById("crumbs");
+  window.cuids = document.getElementById("cuids");
+
+  // default: show UI but disabled until auth validated
+  app.classList.remove("hidden");
+  app.classList.add("disabled");
+
   const s=JSON.parse(localStorage.getItem("boSession")||"null");
   if(s?.token && s?.server){
     TOKEN=s.token;
     BASE=`${s.server}/biprws/v1`;
-    showApp();
+    // validate token by hitting a lightweight endpoint
+    api('/folders').then(d=>{
+      // if API returned entries it's valid
+      app.classList.remove('disabled');
+      showApp();
+    }).catch(()=>{
+      // invalid: show auth
+      app.classList.add('disabled');
+      auth.classList.remove('hidden');
+    });
   }else{
     auth.classList.remove("hidden");
   }
@@ -231,7 +256,7 @@ const ROOT_CONNECTION_CUID="FA_ConnectionsRoot";
 
 /* ===== LOGIN ===== */
 async function login(){
-  const s=server.value.trim().replace(/\/$/,"");
+  const s=document.getElementById('server').value.trim().replace(/\/$/,"");
   status.textContent="Authenticating…";
 
   const r=await fetch(`${s}/biprws/logon/long`,{
@@ -245,12 +270,15 @@ async function login(){
   });
 
   if(!r.ok){status.textContent="Login failed";return;}
-
   const xml=await r.text();
-  TOKEN=xml.match(/<attr name="logonToken".*?>(.*?)</)?.[1];
+  TOKEN=xml.match(/<attr name="logonToken"[^>]*>(.*?)</)?.[1];
+  if(!TOKEN){ status.textContent='Login: token not found'; return; }
   BASE=`${s}/biprws/v1`;
 
   localStorage.setItem("boSession",JSON.stringify({token:TOKEN,server:s}));
+  // enable app and hide auth
+  app.classList.remove('disabled');
+  auth.classList.add('hidden');
   showApp();
 }
 
@@ -297,7 +325,7 @@ async function loadReports(btn){
   breadcrumbs=[{label:"Root",id:null}];
   updateCrumbs();
   const d=await api("/folders");
-  render(d.entries||[]);
+  render(d.entries||[],'reports');
 }
 
 async function openFolder(id,name){
@@ -330,39 +358,60 @@ async function cms(parent){
            WHERE SI_PARENT_CUID='${parent}'
            ORDER BY SI_KIND`;
   const d=await api("/cmsquery","POST",{query:q});
-  render(d.entries||[]);
+  // cmsquery can return results in different fields; normalize
+  render(d.entries||d.results||[],'cms');
 }
 
 /* ===== RENDER ===== */
-function render(items){
-  cache=items;
-  list.innerHTML="";
-  items.forEach(o=>{
-    const isFolder=o.kind==="Folder";
-    const div=document.createElement("div");
-    div.className="item";
-    if(selected.has(o.cuid))div.classList.add("selected");
+function render(items,mode){
+  // normalize items into {id,cuid,name,kind,isFolder,raw}
+  const norm = (o)=>{
+    const name = o.name || o.SI_NAME || o.SI_NAME || o.si_name || "";
+    const kind = o.kind || o.type || o.SI_KIND || o.SI_KIND || "";
+    const cuid = o.SI_CUID || o.cuid || o.CUID || null;
+    const id = o.id || o.ID || o.SI_ID || null;
+    const isFolder = (kind && String(kind).toLowerCase().includes('folder')) || false;
+    return {raw:o,id,cuid,name,kind,isFolder};
+  };
 
-    div.innerHTML=`
-      ${isFolder?folderIcon():""}
-      <div class="name">${o.name}<div class="small">${o.cuid||""}</div></div>
+  cache = items.map(norm);
+  list.innerHTML = "";
+  cache.forEach(o=>{
+    const div = document.createElement('div');
+    div.className = 'item';
+    const key = o.cuid || o.id || '';
+    if(selected.has(key)) div.classList.add('selected');
+
+    div.innerHTML = `
+      ${o.isFolder?folderIcon():""}
+      <div class="name">${escapeHtml(o.name)}<div class="small">${escapeHtml(key)}</div></div>
     `;
 
-    if(isFolder){
-      div.querySelector("svg").onclick=e=>{
+    if(o.isFolder){
+      const svg = div.querySelector('svg');
+      if(svg) svg.onclick = e => {
         e.stopPropagation();
-        if(currentMode==="reports") openFolder(o.id,o.name);
+        if(mode==='reports') openFolder(o.id,o.name);
         else{
           breadcrumbs.push({label:o.name,cuid:o.cuid});
           updateCrumbs();
-          cms(o.cuid);
+          cms(o.cuid || o.id);
         }
       };
     }
 
-    div.onclick=()=>{ if(o.cuid)toggle(o.cuid,div); };
+    div.onclick = ()=>{
+      // select non-folder items; use id or cuid as identifier
+      const ident = o.cuid || o.id || '';
+      if(!o.isFolder && ident) toggle(ident,div);
+    };
+
     list.appendChild(div);
   });
+}
+
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 /* ===== BREADCRUMBS ===== */
