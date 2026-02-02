@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SAP BO Object Explorer</title>
+
+<style>
+:root {
+  --bg: #0b1220;
+  --panel: #020617;
+  --card: #020617;
+  --border: #1e293b;
+  --accent: #38bdf8;
+  --accent-soft: rgba(56,189,248,.15);
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+}
+
+header {
+  padding: 14px 20px;
+  font-size: 18px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr 320px;
+  height: calc(100vh - 52px);
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  padding: 16px;
+  border-right: 1px solid var(--border);
+}
+
+.sidebar button {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sidebar button:hover {
+  border-color: var(--accent);
+}
+
+/* ---------- Main ---------- */
+.main {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar input {
+  width: 100%;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+}
+
+.breadcrumbs {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.breadcrumbs span {
+  cursor: pointer;
+}
+
+.list {
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.item:hover {
+  border-color: var(--accent);
+}
+
+.item.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- Right Panel ---------- */
+.cuids {
+  border-left: 1px solid var(--border);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cuids h4 {
+  margin: 0 0 8px 0;
+}
+
+textarea {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px;
+  border-radius: 6px;
+  resize: none;
+}
+
+.copy {
+  margin-top: 12px;
+  padding: 10px;
+  background: var(--accent);
+  color: #020617;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+<header>SAP BO Object Explorer</header>
+
+<div class="app">
+
+  <!-- LEFT -->
+  <div class="sidebar">
+    <button onclick="loadRoot()">📁 Folders</button>
+    <button onclick="loadReports()">📊 Reports</button>
+    <button onclick="loadUniverses()">🌐 Universes</button>
+    <button onclick="loadConnections()">🔌 Connections</button>
+  </div>
+
+  <!-- CENTER -->
+  <div class="main">
+    <div class="toolbar">
+      <input placeholder="Search by name or CUID…" oninput="filterList(this.value)" />
+    </div>
+    <div class="breadcrumbs" id="crumbs"></div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="cuids">
+    <h4>Selected CUIDs (<span id="count">0</span>)</h4>
+    <textarea id="cuids" readonly></textarea>
+    <button class="copy" onclick="copyCuids()">Copy</button>
+  </div>
+
+</div>
+
+<script>
+const BASE = "/biprws";
+const TOKEN = "<LOGON_TOKEN>";
+
+const headers = {
+  "X-SAP-LogonToken": TOKEN,
+  "Accept": "application/json"
+};
+
+let currentObjects = [];
+let breadcrumb = [];
+const selected = new Map();
+
+/* ---------- Fetch Helpers ---------- */
+async function fetchBO(url) {
+  const res = await fetch(BASE + url, { headers });
+  return res.json();
+}
+
+/* ---------- Folder Drilldown ---------- */
+async function loadRoot() {
+  breadcrumb = [];
+  updateCrumbs();
+  const data = await fetchBO(
+    "/infostore?query=SELECT SI_ID,SI_NAME,SI_CUID FROM CI_INFOOBJECTS WHERE SI_KIND='Folder' AND SI_PARENTID=0"
+  );
+  render(data.entries, "folder");
+}
+
+async function openFolder(id, name) {
+  breadcrumb.push({ id, name });
+  updateCrumbs();
+  const data = await fetchBO(
+    `/infostore?query=SELECT SI_ID,SI_NAME,SI_CUID,SI_KIND FROM CI_INFOOBJECTS WHERE SI_PARENTID=${id}`
+  );
+  render(data.entries);
+}
+
+/* ---------- Other Objects ---------- */
+async function loadReports() {
+  breadcrumb = [];
+  updateCrumbs("Reports");
+  const data = await fetchBO(
+    "/infostore?query=SELECT SI_ID,SI_NAME,SI_CUID FROM CI_INFOOBJECTS WHERE SI_KIND IN ('Webi','CrystalReport')"
+  );
+  render(data.entries, "report");
+}
+
+async function loadUniverses() {
+  breadcrumb = [];
+  updateCrumbs("Universes");
+  const data = await fetchBO(
+    "/infostore?query=SELECT SI_ID,SI_NAME,SI_CUID FROM CI_APPOBJECTS WHERE SI_KIND='Universe'"
+  );
+  render(data.entries, "universe");
+}
+
+async function loadConnections() {
+  breadcrumb = [];
+  updateCrumbs("Connections");
+  const data = await fetchBO("/connections");
+  render(data.connections, "connection");
+}
+
+/* ---------- UI Rendering ---------- */
+function render(objects) {
+  currentObjects = objects || [];
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  currentObjects.forEach(o => {
+    const id = o.id || o.SI_ID;
+    const name = o.name || o.SI_NAME;
+    const cuid = o.cuid || o.SI_CUID;
+    const isFolder = o.SI_KIND === "Folder";
+
+    const div = document.createElement("div");
+    div.className = "item";
+    if (selected.has(cuid)) div.classList.add("selected");
+
+    div.innerHTML = `
+      <div>
+        <strong>${name}</strong>
+        <small>${cuid || ""}</small>
+      </div>
+    `;
+
+    div.onclick = () => {
+      if (isFolder) openFolder(id, name);
+      if (cuid) toggleSelect(cuid, name, div);
+    };
+
+    list.appendChild(div);
+  });
+}
+
+function filterList(term) {
+  term = term.toLowerCase();
+  render(
+    currentObjects.filter(o =>
+      (o.SI_NAME || o.name || "").toLowerCase().includes(term) ||
+      (o.SI_CUID || o.cuid || "").toLowerCase().includes(term)
+    )
+  );
+}
+
+/* ---------- Selection ---------- */
+function toggleSelect(cuid, name, el) {
+  if (selected.has(cuid)) {
+    selected.delete(cuid);
+    el.classList.remove("selected");
+  } else {
+    selected.set(cuid, name);
+    el.classList.add("selected");
+  }
+  updateSelected();
+}
+
+function updateSelected() {
+  document.getElementById("cuids").value =
+    [...selected.keys()].join("\n");
+  document.getElementById("count").innerText = selected.size;
+}
+
+function copyCuids() {
+  navigator.clipboard.writeText(document.getElementById("cuids").value);
+  alert("Copied");
+}
+
+/* ---------- Breadcrumbs ---------- */
+function updateCrumbs(label) {
+  const el = document.getElementById("crumbs");
+  if (label) {
+    el.innerHTML = label;
+    return;
+  }
+  el.innerHTML = breadcrumb
+    .map((b, i) => `<span onclick="openFolder(${b.id},'${b.name}')">${b.name}</span>`)
+    .join(" / ");
+}
+</script>
+</body>
+</html>
