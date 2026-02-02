@@ -12,7 +12,6 @@
   --accent:#38bdf8;
   --text:#e5e7eb;
   --muted:#94a3b8;
-  --disabled:#334155;
 }
 
 *{box-sizing:border-box;font-family:system-ui;}
@@ -31,7 +30,7 @@ header{
 
 .app{
   display:grid;
-  grid-template-columns:300px 1fr 320px;
+  grid-template-columns:320px 1fr 320px;
   height:calc(100vh - 54px);
 }
 
@@ -39,6 +38,10 @@ header{
 .auth{
   padding:16px;
   border-right:1px solid var(--border);
+}
+
+.auth h3{
+  margin-top:0;
 }
 
 .auth input{
@@ -68,7 +71,7 @@ header{
 
 /* ---------- MAIN ---------- */
 .main{
-  opacity:.3;
+  opacity:.35;
   pointer-events:none;
   display:flex;
   flex-direction:column;
@@ -106,12 +109,19 @@ header{
   border:1px solid var(--border);
   border-radius:6px;
   margin-bottom:8px;
+  cursor:pointer;
 }
 
 .item:hover{border-color:var(--accent);}
 .item.selected{background:rgba(56,189,248,.15);}
 
-.icon{width:16px;height:16px;fill:var(--muted);cursor:pointer;}
+.icon{
+  width:16px;
+  height:16px;
+  fill:var(--muted);
+  cursor:pointer;
+}
+
 .name{flex:1;}
 .small{font-size:12px;color:var(--muted);}
 
@@ -153,8 +163,11 @@ textarea{
 <!-- AUTH -->
 <div class="auth">
   <h3>Authentication</h3>
+
+  <input id="server" placeholder="Server URL (https://bo.company.com)">
   <input id="user" placeholder="Username">
   <input id="pass" type="password" placeholder="Password">
+
   <button onclick="login()">Login</button>
   <div class="status" id="status"></div>
 </div>
@@ -162,7 +175,7 @@ textarea{
 <!-- MAIN -->
 <div class="main" id="main">
   <div class="toolbar">
-    <input placeholder="Search…" oninput="filter(this.value)">
+    <input placeholder="Search by Name or CUID…" oninput="filterList(this.value)">
   </div>
   <div class="list" id="list"></div>
 </div>
@@ -171,106 +184,141 @@ textarea{
 <div class="right">
   <h4>Selected CUIDs</h4>
   <textarea id="cuids" readonly></textarea>
-  <button class="copy" onclick="copy()">Copy</button>
+  <button class="copy" onclick="copyCuids()">Copy</button>
 </div>
 
 </div>
 
 <script>
-const BASE="/biprws/v1";
-let TOKEN=null;
-let cache=[];
-const selected=new Set();
+let BASE = "";
+let TOKEN = null;
+let cache = [];
+const selected = new Set();
 
 /* ---------- LOGIN ---------- */
 async function login(){
-  const u=user.value,p=pass.value;
-  status.textContent="Authenticating…";
+  const serverUrl = server.value.trim().replace(/\/$/, "");
+  const username = user.value.trim();
+  const password = pass.value;
 
-  const res=await fetch("/biprws/logon/long",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({userName:u,password:p,auth:"secEnterprise"})
-  });
+  if(!serverUrl || !username || !password){
+    status.textContent = "All fields are required";
+    return;
+  }
 
-  if(!res.ok){status.textContent="Login failed";return;}
+  status.textContent = "Authenticating…";
 
-  const xml=await res.text();
-  TOKEN=xml.match(/<attr name="logonToken".*?>(.*?)</)[1];
+  try{
+    const res = await fetch(`${serverUrl}/biprws/logon/long`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        userName: username,
+        password: password,
+        auth: "secEnterprise"
+      })
+    });
 
-  status.textContent="Authenticated";
-  main.classList.add("active");
-  loadRoot();
+    if(!res.ok) throw new Error("Login failed");
+
+    const xml = await res.text();
+    TOKEN = xml.match(/<attr name="logonToken".*?>(.*?)</)?.[1];
+
+    if(!TOKEN) throw new Error("Token not found");
+
+    BASE = `${serverUrl}/biprws/v1`;
+    status.textContent = "Authenticated";
+    main.classList.add("active");
+    loadRoot();
+
+  }catch(e){
+    status.textContent = "Authentication failed";
+  }
 }
 
-/* ---------- FETCH ---------- */
-async function api(url){
-  const r=await fetch(BASE+url,{headers:{"X-SAP-LogonToken":TOKEN}});
+/* ---------- API ---------- */
+async function api(path){
+  const r = await fetch(BASE + path,{
+    headers:{"X-SAP-LogonToken":TOKEN}
+  });
   return r.json();
 }
 
 /* ---------- FOLDERS ---------- */
 async function loadRoot(){
-  const d=await api("/folders");
-  render(d.folders);
+  const d = await api("/folders");
+  render(d.folders || []);
 }
 
 async function openFolder(id){
-  const d=await api(`/folders/${id}/children`);
-  render(d.entries);
+  const d = await api(`/folders/${id}/children`);
+  render(d.entries || []);
 }
 
 /* ---------- RENDER ---------- */
 function render(items){
-  cache=items;
-  list.innerHTML="";
-  items.forEach(o=>{
-    const isFolder=o.type==="Folder";
-    const div=document.createElement("div");
-    div.className="item";
-    if(selected.has(o.cuid))div.classList.add("selected");
+  cache = items;
+  list.innerHTML = "";
 
-    div.innerHTML=`
-      ${isFolder?folderIcon():""}
-      <div class="name">${o.name}<div class="small">${o.cuid||""}</div></div>
+  items.forEach(o=>{
+    const isFolder = o.type === "Folder";
+    const cuid = o.cuid;
+
+    const div = document.createElement("div");
+    div.className = "item";
+    if(selected.has(cuid)) div.classList.add("selected");
+
+    div.innerHTML = `
+      ${isFolder ? folderIcon() : ""}
+      <div class="name">
+        ${o.name}
+        <div class="small">${cuid || ""}</div>
+      </div>
     `;
 
     if(isFolder){
-      div.querySelector("svg").onclick=e=>{
-        e.stopPropagation();openFolder(o.id);
+      div.querySelector("svg").onclick = e=>{
+        e.stopPropagation();
+        openFolder(o.id);
       };
     }
 
-    div.onclick=()=>toggle(o.cuid,div);
+    div.onclick = ()=>{
+      if(cuid) toggleSelect(cuid, div);
+    };
+
     list.appendChild(div);
   });
 }
 
 /* ---------- FILTER ---------- */
-function filter(t){
-  render(cache.filter(o=>
-    o.name.toLowerCase().includes(t.toLowerCase())||
-    (o.cuid||"").toLowerCase().includes(t.toLowerCase())
+function filterList(term){
+  term = term.toLowerCase();
+  render(cache.filter(o =>
+    o.name.toLowerCase().includes(term) ||
+    (o.cuid || "").toLowerCase().includes(term)
   ));
 }
 
 /* ---------- SELECT ---------- */
-function toggle(c,el){
-  if(!c)return;
-  selected.has(c)?selected.delete(c):selected.add(c);
+function toggleSelect(cuid, el){
+  selected.has(cuid) ? selected.delete(cuid) : selected.add(cuid);
   el.classList.toggle("selected");
-  cuids.value=[...selected].join("\n");
+  cuids.value = [...selected].join("\n");
 }
 
-function copy(){
+function copyCuids(){
   navigator.clipboard.writeText(cuids.value);
 }
 
 /* ---------- ICON ---------- */
 function folderIcon(){
-return `<svg class="icon" viewBox="0 0 24 24">
-<path d="M10 4l2 2h8v12H4V4z"/></svg>`;
+  return `
+  <svg class="icon" viewBox="0 0 24 24">
+    <path d="M10 4l2 2h8v12H4V4z"/>
+  </svg>`;
 }
 </script>
+
 </body>
 </html>
