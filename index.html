@@ -1,29 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
 <title>SAP BO Object Picker</title>
 
 <style>
 :root{
+  --red:#dc2626;
+  --border:#e5e7eb;
   --bg:#ffffff;
   --panel:#f9fafb;
-  --border:#e5e7eb;
-  --primary:#dc2626;
-  --primary-soft:#fee2e2;
   --text:#111827;
   --muted:#6b7280;
 }
 
-*{box-sizing:border-box;font-family:system-ui,Segoe UI;}
+*{box-sizing:border-box;font-family:system-ui;}
 
 body{margin:0;background:var(--bg);color:var(--text);}
-header{
-  padding:14px 20px;
-  font-size:18px;
-  font-weight:600;
-  border-bottom:1px solid var(--border);
-}
+header{padding:14px 20px;font-weight:600;border-bottom:1px solid var(--border);}
 
 .hidden{display:none;}
 
@@ -32,29 +26,21 @@ header{
   margin:80px auto;
   padding:24px;
   border:1px solid var(--border);
-  border-radius:10px;
+  border-radius:8px;
 }
 
-.auth input{
+.auth input,.auth button{
   width:100%;
-  margin-bottom:12px;
   padding:10px;
-  border:1px solid var(--border);
-  border-radius:6px;
+  margin-bottom:10px;
 }
 
 .auth button{
-  width:100%;
-  padding:10px;
-  background:var(--primary);
-  color:#fff;
+  background:var(--red);
+  color:white;
   border:none;
-  border-radius:6px;
   font-weight:600;
-  cursor:pointer;
 }
-
-#status{font-size:13px;color:var(--muted);}
 
 .app{
   display:grid;
@@ -62,8 +48,6 @@ header{
   height:calc(100vh - 56px);
 }
 
-.app.disabled{opacity:0.5;pointer-events:none}
-/* NAV */
 .nav{
   border-right:1px solid var(--border);
   padding:14px;
@@ -73,28 +57,19 @@ header{
   width:100%;
   padding:10px;
   margin-bottom:10px;
-  background:#fff;
   border:1px solid var(--border);
-  border-radius:6px;
+  background:white;
   cursor:pointer;
 }
 
 .nav button.active{
-  border-color:var(--primary);
-  color:var(--primary);
+  border-color:var(--red);
+  color:var(--red);
 }
 
-/* MAIN */
-.main{display:flex;flex-direction:column;}
-.toolbar{
-  padding:10px;
-  border-bottom:1px solid var(--border);
-}
-.toolbar input{
-  width:100%;
-  padding:10px;
-  border:1px solid var(--border);
-  border-radius:6px;
+.main{
+  display:flex;
+  flex-direction:column;
 }
 
 .breadcrumbs{
@@ -104,8 +79,8 @@ header{
 }
 
 .breadcrumbs span{
-  color:var(--primary);
   cursor:pointer;
+  color:var(--red);
 }
 
 .list{
@@ -114,7 +89,6 @@ header{
   overflow:auto;
 }
 
-/* ITEM */
 .item{
   display:flex;
   align-items:center;
@@ -122,28 +96,20 @@ header{
   padding:10px;
   border:1px solid var(--border);
   border-radius:6px;
-  background:#fff;
+  background:white;
   margin-bottom:8px;
   cursor:pointer;
 }
 
-.item:hover{border-color:var(--primary);}
-.item.selected{
-  background:var(--primary-soft);
-  border-color:var(--primary);
-}
+.item:hover{border-color:var(--red);}
+.item.selected{background:#fee2e2;border-color:var(--red);}
 
 .icon{
   width:16px;
   height:16px;
-  fill:var(--primary);
-  cursor:pointer;
+  fill:var(--red);
 }
 
-.name{flex:1;}
-.small{font-size:12px;color:var(--muted);}
-
-/* RIGHT */
 .right{
   border-left:1px solid var(--border);
   padding:14px;
@@ -151,22 +117,13 @@ header{
   flex-direction:column;
 }
 
-textarea{
-  flex:1;
-  padding:10px;
-  border:1px solid var(--border);
-  border-radius:6px;
-  resize:none;
-}
-
-.copy{
+textarea{flex:1;padding:10px;}
+button.copy{
   margin-top:10px;
-  padding:10px;
-  background:var(--primary);
-  color:#fff;
+  background:var(--red);
+  color:white;
   border:none;
-  border-radius:6px;
-  font-weight:600;
+  padding:10px;
 }
 </style>
 </head>
@@ -176,8 +133,7 @@ textarea{
 
 <!-- LOGIN -->
 <div class="auth hidden" id="auth">
-  <h3>Login</h3>
-  <input id="server" placeholder="Server URL (https://bo.company.com)">
+  <input id="server" placeholder="Server URL">
   <input id="user" placeholder="Username">
   <input id="pass" type="password" placeholder="Password">
   <button onclick="login()">Login</button>
@@ -186,6 +142,7 @@ textarea{
 
 <!-- APP -->
 <div class="app hidden" id="app">
+
   <div class="nav">
     <button onclick="loadReports(this)">Reports</button>
     <button onclick="loadUniverses(this)">Universes</button>
@@ -193,9 +150,6 @@ textarea{
   </div>
 
   <div class="main">
-    <div class="toolbar">
-      <input placeholder="Search…" oninput="filter(this.value)">
-    </div>
     <div class="breadcrumbs" id="crumbs"></div>
     <div class="list" id="list"></div>
   </div>
@@ -205,80 +159,44 @@ textarea{
     <textarea id="cuids" readonly></textarea>
     <button class="copy" onclick="copy()">Copy</button>
   </div>
+
 </div>
 
 <script>
-/* ===== STATE ===== */
 let BASE="", TOKEN="";
-let cache=[], breadcrumbs=[], currentMode="";
-let authFailures=0;
-const MAX_AUTH_FAILURES=3;
+let mode="";
+let crumbs=[];
 const selected=new Set();
 
-const ROOT_UNIVERSE_CUID="FA_UniversesRoot";
-const ROOT_CONNECTION_CUID="FA_ConnectionsRoot";
+const ROOT_UNIVERSE_CUID="faiegsiegeosheteoeg";
+const ROOT_CONNECTION_CUID="faiegsiegeosheteoeg";
 
-/* ===== INIT ===== */
+/* INIT */
 (function(){
-  // get DOM refs early
-  window.auth = document.getElementById("auth");
-  window.app = document.getElementById("app");
-  window.status = document.getElementById("status");
-  window.server = document.getElementById("server");
-  window.user = document.getElementById("user");
-  window.pass = document.getElementById("pass");
-  window.list = document.getElementById("list");
-  window.crumbs = document.getElementById("crumbs");
-  window.cuids = document.getElementById("cuids");
-
-  // default: show UI but disabled until auth validated
-  app.classList.remove("hidden");
-  app.classList.add("disabled");
-
   const s=JSON.parse(localStorage.getItem("boSession")||"null");
-  if(s?.token && s?.server){
+  if(s?.token){
     TOKEN=s.token;
-    BASE=`${s.server}/biprws/v1`;
-    // validate token by hitting a lightweight endpoint
-    api('/folders').then(d=>{
-      // if API returned entries it's valid
-      app.classList.remove('disabled');
-      showApp();
-    }).catch(()=>{
-      // invalid: show auth
-      app.classList.add('disabled');
-      auth.classList.remove('hidden');
-    });
-  }else{
-    auth.classList.remove("hidden");
-  }
+    BASE=s.base;
+    showApp();
+  }else auth.classList.remove("hidden");
 })();
 
-/* ===== LOGIN ===== */
+/* LOGIN */
 async function login(){
-  const s=document.getElementById('server').value.trim().replace(/\/$/,"");
+  const s=server.value.replace(/\/$/,"");
   status.textContent="Authenticating…";
 
   const r=await fetch(`${s}/biprws/logon/long`,{
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      userName:user.value,
-      password:pass.value,
-      auth:"secEnterprise"
-    })
+    body:JSON.stringify({userName:user.value,password:pass.value,auth:"secEnterprise"})
   });
 
-  if(!r.ok){status.textContent="Login failed";return;}
   const xml=await r.text();
-  TOKEN=xml.match(/<attr name="logonToken"[^>]*>(.*?)</)?.[1];
-  if(!TOKEN){ status.textContent='Login: token not found'; return; }
+  TOKEN=xml.match(/<attr name="logonToken".*?>(.*?)</)?.[1];
   BASE=`${s}/biprws/v1`;
 
-  localStorage.setItem("boSession",JSON.stringify({token:TOKEN,server:s}));
-  // enable app and hide auth
-  app.classList.remove('disabled');
-  auth.classList.add('hidden');
+  localStorage.setItem("boSession",JSON.stringify({token:TOKEN,base:BASE}));
   showApp();
 }
 
@@ -287,9 +205,9 @@ function showApp(){
   app.classList.remove("hidden");
 }
 
-/* ===== API (SAFE) ===== */
-async function api(path,method="GET",body){
-  const r=await fetch(BASE+path,{
+/* API */
+async function api(url,method="GET",body){
+  const r=await fetch(BASE+url,{
     method,
     headers:{
       "X-SAP-LogonToken":TOKEN,
@@ -297,157 +215,101 @@ async function api(path,method="GET",body){
     },
     body:body?JSON.stringify(body):null
   });
-
-  if(r.status===401||r.status===403){
-    authFailures++;
-    if(authFailures>=MAX_AUTH_FAILURES){
-      logout();
-      throw new Error("Session expired");
-    }
-    return {entries:[]};
-  }
-
-  authFailures=0;
   return r.json();
 }
 
-function logout(){
-  localStorage.removeItem("boSession");
-  authFailures=0;
-  app.classList.add("hidden");
-  auth.classList.remove("hidden");
-}
-
-/* ===== REPORTS ===== */
+/* REPORTS */
 async function loadReports(btn){
-  activate(btn);
-  currentMode="reports";
-  breadcrumbs=[{label:"Root",id:null}];
-  updateCrumbs();
+  setMode(btn,"reports");
+  crumbs=[{label:"Root"}];
+  renderCrumbs();
   const d=await api("/folders");
-  render(d.entries||[],'reports');
+  renderList(d.entries,true);
 }
 
 async function openFolder(id,name){
-  breadcrumbs.push({label:name,id});
-  updateCrumbs();
+  crumbs.push({label:name,id});
+  renderCrumbs();
   const d=await api(`/folders/${id}/children`);
-  render(d.entries||[]);
+  renderList(d.entries,true);
 }
 
-/* ===== CMS ===== */
+/* CMS */
 async function loadUniverses(btn){
-  activate(btn);
-  currentMode="cms";
-  breadcrumbs=[{label:"Universes",cuid:ROOT_UNIVERSE_CUID}];
-  updateCrumbs();
+  setMode(btn,"cms");
+  crumbs=[{label:"Universes",cuid:ROOT_UNIVERSE_CUID}];
+  renderCrumbs();
   cms(ROOT_UNIVERSE_CUID);
 }
 
 async function loadConnections(btn){
-  activate(btn);
-  currentMode="cms";
-  breadcrumbs=[{label:"Connections",cuid:ROOT_CONNECTION_CUID}];
-  updateCrumbs();
+  setMode(btn,"cms");
+  crumbs=[{label:"Connections",cuid:ROOT_CONNECTION_CUID}];
+  renderCrumbs();
   cms(ROOT_CONNECTION_CUID);
 }
 
 async function cms(parent){
-  const q=`SELECT SI_ID,SI_CUID,SI_NAME,SI_KIND
-           FROM CI_APPOBJECTS,CI_SYSTEMOBJECTS
+  const q=`SELECT SI_ID, SI_CUID, SI_NAME, SI_KIND
+           FROM CI_APPOBJECTS, CI_SYSTEMOBJECTS
            WHERE SI_PARENT_CUID='${parent}'
            ORDER BY SI_KIND`;
   const d=await api("/cmsquery","POST",{query:q});
-  // cmsquery can return results in different fields; normalize
-  render(d.entries||d.results||[],'cms');
+  renderList(d.entries,false);
 }
 
-/* ===== RENDER ===== */
-function render(items,mode){
-  // normalize items into {id,cuid,name,kind,isFolder,raw}
-  const norm = (o)=>{
-    const name = o.name || o.SI_NAME || o.SI_NAME || o.si_name || "";
-    const kind = o.kind || o.type || o.SI_KIND || o.SI_KIND || "";
-    const cuid = o.SI_CUID || o.cuid || o.CUID || null;
-    const id = o.id || o.ID || o.SI_ID || null;
-    const isFolder = (kind && String(kind).toLowerCase().includes('folder')) || false;
-    return {raw:o,id,cuid,name,kind,isFolder};
-  };
+/* RENDER */
+function renderList(items,isReport){
+  list.innerHTML="";
+  items.forEach(o=>{
+    const isFolder=isReport ? o.type==="Folder" : o.kind==="Folder";
+    const div=document.createElement("div");
+    div.className="item";
 
-  cache = items.map(norm);
-  list.innerHTML = "";
-  cache.forEach(o=>{
-    const div = document.createElement('div');
-    div.className = 'item';
-    const key = o.cuid || o.id || '';
-    if(selected.has(key)) div.classList.add('selected');
-
-    div.innerHTML = `
-      ${o.isFolder?folderIcon():""}
-      <div class="name">${escapeHtml(o.name)}<div class="small">${escapeHtml(key)}</div></div>
+    div.innerHTML=`
+      ${isFolder?folderIcon():""}
+      <div>${o.name}<div style="font-size:12px;color:#6b7280">${o.cuid||""}</div></div>
     `;
 
-    if(o.isFolder){
-      const svg = div.querySelector('svg');
-      if(svg) svg.onclick = e => {
+    if(isFolder){
+      div.querySelector("svg").onclick=e=>{
         e.stopPropagation();
-        if(mode==='reports') openFolder(o.id,o.name);
-        else{
-          breadcrumbs.push({label:o.name,cuid:o.cuid});
-          updateCrumbs();
-          cms(o.cuid || o.id);
-        }
+        isReport?openFolder(o.id,o.name):(crumbs.push({label:o.name,cuid:o.cuid}),renderCrumbs(),cms(o.cuid));
       };
     }
 
-    div.onclick = ()=>{
-      // select non-folder items; use id or cuid as identifier
-      const ident = o.cuid || o.id || '';
-      if(!o.isFolder && ident) toggle(ident,div);
-    };
-
+    div.onclick=()=>{ if(o.cuid)toggle(o.cuid,div); };
     list.appendChild(div);
   });
 }
 
-function escapeHtml(s){
-  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* BREADCRUMBS */
+function renderCrumbs(){
+  crumbsEl.innerHTML=crumbs.map((c,i)=>`<span onclick="goCrumb(${i})">${c.label}</span>`).join(" / ");
+}
+const crumbsEl=document.getElementById("crumbs");
+
+function goCrumb(i){
+  crumbs=crumbs.slice(0,i+1);
+  renderCrumbs();
+  const c=crumbs[i];
+  mode==="reports"?loadReports(document.querySelector(".nav button.active")):cms(c.cuid);
 }
 
-/* ===== BREADCRUMBS ===== */
-function updateCrumbs(){
-  crumbs.innerHTML=breadcrumbs.map((b,i)=>
-    `<span onclick="crumb(${i})">${b.label}</span>`
-  ).join(" / ");
-}
-
-function crumb(i){
-  breadcrumbs=breadcrumbs.slice(0,i+1);
-  updateCrumbs();
-  const b=breadcrumbs[i];
-  currentMode==="reports"
-    ? (b.id?openFolder(b.id,b.label):loadReports(document.querySelector(".nav button.active")))
-    : cms(b.cuid);
-}
-
-/* ===== UTIL ===== */
-function filter(t){
-  t=t.toLowerCase();
-  render(cache.filter(o=>o.name.toLowerCase().includes(t)||(o.cuid||"").toLowerCase().includes(t)));
-}
+/* UTILS */
 function toggle(c,el){
   selected.has(c)?selected.delete(c):selected.add(c);
   el.classList.toggle("selected");
   cuids.value=[...selected].join("\n");
 }
 function copy(){navigator.clipboard.writeText(cuids.value);}
-function activate(btn){
+function setMode(btn,m){
+  mode=m;
   document.querySelectorAll(".nav button").forEach(b=>b.classList.remove("active"));
   btn.classList.add("active");
 }
 function folderIcon(){
-  return `<svg class="icon" viewBox="0 0 24 24">
-    <path d="M10 4l2 2h8v12H4V4z"/></svg>`;
+  return `<svg class="icon" viewBox="0 0 24 24"><path d="M10 4l2 2h8v12H4V4z"/></svg>`;
 }
 </script>
 </body>
