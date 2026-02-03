@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAP BO Explorer | Red Theme</title>
+    <title>SAP BO Picker | Red & White Material</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         :root {
             --md-red: #d32f2f;
             --md-red-dark: #b71c1c;
             --md-red-light: #ffcdd2;
-            --bg: #fafafa;
+            --bg: #f5f5f5;
             --surface: #ffffff;
             --text-main: #212121;
             --text-secondary: #757575;
             --border: #e0e0e0;
-            --shadow: 0 2px 5px rgba(0,0,0,0.1);
-            --selected-bg: #ffebee; /* Light red for highlighted items */
+            --shadow: 0 4px 6px rgba(0,0,0,0.1);
+            --selected-bg: #ffebee;
         }
 
         body {
@@ -34,7 +34,7 @@
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
             z-index: 10;
         }
 
@@ -49,7 +49,7 @@
             gap: 12px;
         }
 
-        .nav-group { padding: 12px 0; }
+        .nav-group { padding: 16px 0; }
 
         .nav-btn {
             width: 100%;
@@ -60,18 +60,18 @@
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 16px;
             color: var(--text-main);
             font-size: 14px;
-            transition: all 0.2s;
+            font-weight: 500;
+            transition: all 0.2s ease;
         }
 
-        .nav-btn i { color: var(--text-secondary); }
-        .nav-btn:hover { background: var(--md-red-light); }
+        .nav-btn i { color: var(--text-secondary); font-size: 20px; }
+        .nav-btn:hover { background: #fdfdfd; color: var(--md-red); }
         .nav-btn.active { 
-            background: #ffebee; 
+            background: var(--selected-bg); 
             color: var(--md-red); 
-            font-weight: bold; 
             border-right: 4px solid var(--md-red);
         }
         .nav-btn.active i { color: var(--md-red); }
@@ -92,42 +92,34 @@
             align-items: center;
         }
 
-        #breadcrumb { color: var(--text-secondary); font-size: 14px; }
+        #breadcrumb { color: var(--text-secondary); font-size: 13px; }
 
         #content-area {
             flex: 1;
             margin: 24px;
             background: var(--surface);
-            border-radius: 8px;
+            border-radius: 12px;
             box-shadow: var(--shadow);
             overflow-y: auto;
+            border: 1px solid var(--border);
         }
 
-        /* Item Rows */
         .item-row {
             display: flex;
             align-items: center;
-            padding: 12px 24px;
+            padding: 14px 24px;
             border-bottom: 1px solid #f0f0f0;
-            transition: all 0.2s;
+            transition: background 0.2s ease;
             cursor: pointer;
-            position: relative;
         }
 
-        .item-row:hover { background: #fff5f5; }
-        
-        /* Highlighted State */
-        .item-row.selected {
-            background: var(--selected-bg);
-            border-left: 4px solid var(--md-red);
-        }
-
-        .item-icon { margin-right: 16px; color: var(--text-secondary); }
+        .item-row:hover { background: #fafafa; }
+        .item-row.selected { background: var(--selected-bg); border-left: 4px solid var(--md-red); }
+        .item-icon { margin-right: 20px; color: var(--text-secondary); font-size: 22px; }
         .item-row.selected .item-icon { color: var(--md-red); }
-
         .item-info { flex: 1; }
-        .item-name { font-size: 15px; margin-bottom: 2px; }
-        .item-meta { font-size: 12px; color: var(--text-secondary); }
+        .item-name { font-size: 15px; font-weight: 500; }
+        .item-meta { font-size: 12px; color: var(--text-secondary); font-family: monospace; }
 
         .drill-icon-btn {
             padding: 8px;
@@ -138,52 +130,77 @@
             justify-content: center;
             transition: background 0.2s;
         }
-
         .drill-icon-btn:hover { background: var(--md-red-light); }
 
-        .config-box { padding: 20px; border-top: 1px solid var(--border); }
+        .config-box { padding: 24px; border-top: 1px solid var(--border); }
         .config-box input {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             border: 1px solid var(--border);
-            border-radius: 4px;
+            border-radius: 6px;
             box-sizing: border-box;
             outline-color: var(--md-red);
         }
 
+        /* Enhanced Selection Basket */
         #selection-box {
-            background: #fff;
+            background: var(--surface);
             margin: 0 24px 24px 24px;
-            padding: 16px;
-            border-radius: 8px;
+            padding: 20px;
+            border-radius: 12px;
             box-shadow: var(--shadow);
-            border-top: 3px solid var(--md-red);
+            border-top: 4px solid var(--md-red);
         }
 
+        /* Tag/Chip Container */
         #cuid-list {
-            font-family: 'Roboto Mono', monospace;
-            font-size: 12px;
-            color: var(--md-red-dark);
-            background: #fafafa;
-            padding: 8px;
-            border-radius: 4px;
-            max-height: 60px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            background: #fcfcfc;
+            padding: 12px;
+            border-radius: 6px;
+            min-height: 40px;
+            max-height: 120px;
             overflow-y: auto;
-            margin: 8px 0;
+            margin: 12px 0;
+            border: 1px solid #f0f0f0;
         }
+
+        .cuid-tag {
+            background: white;
+            border: 1px solid var(--md-red-light);
+            color: var(--md-red-dark);
+            padding: 4px 10px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .remove-tag-btn {
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+
+        .remove-tag-btn:hover { color: var(--md-red); }
 
         .copy-btn {
             background: var(--md-red);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
+            padding: 10px 24px;
+            border-radius: 6px;
             font-weight: 500;
             cursor: pointer;
             display: flex;
             align-items: center;
             gap: 8px;
-            float: right;
             transition: background 0.2s;
         }
 
@@ -196,6 +213,7 @@
             justify-content: center;
             height: 100%;
             color: var(--text-secondary);
+            text-align: center;
         }
     </style>
 </head>
@@ -203,48 +221,50 @@
 
     <div id="sidebar">
         <div class="brand-header">
-            <i class="material-icons">storage</i>
-            <span>SAP BO Explorer</span>
+            <i class="material-icons">lan</i>
+            <span>SAP BO Picker</span>
         </div>
         <div class="nav-group">
             <button class="nav-btn" onclick="loadRoot('Reports', this)">
-                <i class="material-icons">description</i> Reports
+                <i class="material-icons">assessment</i> Reports
             </button>
             <button class="nav-btn" onclick="loadRoot('Universes', this)">
-                <i class="material-icons">public</i> Universes
+                <i class="material-icons">cloud_circle</i> Universes
             </button>
             <button class="nav-btn" onclick="loadRoot('Connections', this)">
-                <i class="material-icons">settings_input_component</i> Connections
+                <i class="material-icons">settings_ethernet</i> Connections
             </button>
         </div>
         
         <div class="config-box" style="margin-top: auto;">
-            <p style="font-size: 11px; font-weight: bold; color: var(--text-secondary); margin-bottom: 8px;">ACCESS TOKEN</p>
-            <input type="password" id="token" placeholder="X-SAP-LogonToken">
+            <p style="font-size: 11px; font-weight: bold; color: var(--text-secondary); margin-bottom: 10px; letter-spacing: 1px;">AUTH TOKEN</p>
+            <input type="password" id="token" placeholder="Paste X-SAP-LogonToken here">
         </div>
     </div>
 
     <div id="main">
         <header>
-            <div id="breadcrumb">Home</div>
-            <div style="font-size: 12px; color: var(--md-red); font-weight: 500;">BIPRWS V1</div>
+            <div id="breadcrumb">Select a source from the sidebar</div>
+            <div style="font-size: 12px; color: var(--md-red); font-weight: 700; background: var(--selected-bg); padding: 4px 12px; border-radius: 20px;">REST API V1</div>
         </header>
 
         <div id="content-area">
             <div class="empty-state">
-                <i class="material-icons" style="font-size: 48px; margin-bottom: 16px;">touch_app</i>
-                <p>Select a category to browse objects</p>
+                <i class="material-icons" style="font-size: 64px; margin-bottom: 16px; opacity: 0.2;">folder_open</i>
+                <p>No source selected.</p>
             </div>
         </div>
 
         <div id="selection-box">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 14px; font-weight: 500;">Selection Basket</span>
+                <span style="font-size: 14px; font-weight: 700; color: var(--md-red-dark);">Selection Basket</span>
                 <button class="copy-btn" onclick="copyCuids()">
-                    <i class="material-icons" style="font-size: 18px;">content_copy</i> Copy List
+                    <i class="material-icons" style="font-size: 18px;">content_copy</i> Copy CUIDs
                 </button>
             </div>
-            <div id="cuid-list">No items selected</div>
+            <div id="cuid-list">
+                <span style="color: #bbb; font-size: 13px;">No items selected</span>
+            </div>
         </div>
     </div>
 
@@ -257,10 +277,11 @@
 
         let selectedCuids = new Set();
         let currentCategory = '';
-        let currentData = []; // Store current view data for easy re-rendering
 
         async function apiRequest(endpoint, method = 'GET', body = null) {
             const token = document.getElementById('token').value;
+            if (!token) { alert("Token missing"); throw new Error("Token missing"); }
+
             const headers = {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
@@ -268,9 +289,7 @@
             };
 
             const response = await fetch(`${BASE_URL}${endpoint}`, {
-                method,
-                headers,
-                body: body ? JSON.stringify(body) : null
+                method, headers, body: body ? JSON.stringify(body) : null
             });
             return response.json();
         }
@@ -281,76 +300,58 @@
             currentCategory = category;
             document.getElementById('breadcrumb').innerText = category;
             
-            if (category === 'Reports') {
-                fetchItems('/folders');
-            } else {
-                fetchCmsQuery(ROOT_CUIDS[category]);
-            }
+            if (category === 'Reports') { fetchItems('/folders'); } 
+            else { fetchCmsQuery(ROOT_CUIDS[category]); }
         }
 
         async function fetchItems(endpoint) {
             const container = document.getElementById('content-area');
-            container.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
+            container.innerHTML = '<div class="empty-state"><p>Fetching...</p></div>';
             try {
                 const data = await apiRequest(endpoint);
-                currentData = data.entries || data.folders?.entries || [];
-                renderList(currentData);
-            } catch (err) {
-                container.innerHTML = `<div class="empty-state" style="color:var(--md-red)">Error: ${err.message}</div>`;
-            }
+                renderList(data.entries || data.folders?.entries || []);
+            } catch (err) { container.innerHTML = `<div class="empty-state">Error: ${err.message}</div>`; }
         }
 
         async function fetchCmsQuery(parentCuid) {
             const container = document.getElementById('content-area');
-            container.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
+            container.innerHTML = '<div class="empty-state"><p>Querying...</p></div>';
             const query = `SELECT SI_ID, SI_CUID, SI_NAME, SI_KIND FROM CI_APPOBJECTS, CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${parentCuid}' ORDER BY SI_KIND`;
             try {
                 const data = await apiRequest('/cmsquery', 'POST', { query });
-                currentData = data.entries || [];
-                renderList(currentData);
-            } catch (err) {
-                container.innerHTML = `<div class="empty-state" style="color:var(--md-red)">Error: ${err.message}</div>`;
-            }
+                renderList(data.entries || []);
+            } catch (err) { container.innerHTML = `<div class="empty-state">Error: ${err.message}</div>`; }
         }
 
         function renderList(items) {
             const container = document.getElementById('content-area');
             container.innerHTML = '';
-
             if (items.length === 0) {
-                container.innerHTML = '<div class="empty-state"><p>This folder is empty.</p></div>';
+                container.innerHTML = '<div class="empty-state"><p>Empty directory.</p></div>';
                 return;
             }
 
             items.forEach(item => {
                 const cuid = item.cuid || item.SI_CUID;
                 const isSelected = selectedCuids.has(cuid);
-                
                 const row = document.createElement('div');
                 row.className = `item-row ${isSelected ? 'selected' : ''}`;
-                row.setAttribute('data-cuid', cuid);
+                row.setAttribute('data-row-cuid', cuid);
                 
                 row.onclick = (e) => {
-                    if(!e.target.closest('.drill-icon-btn')) {
-                        toggleSelection(cuid, row);
-                    }
+                    if(!e.target.closest('.drill-icon-btn')) toggleSelection(cuid, row);
                 };
 
-                const kind = item.kind || item.SI_KIND || item.type;
-                const isFolder = (kind === 'Folder');
-                // Use a check circle if selected, otherwise standard file/folder icon
-                const iconName = isSelected ? 'check_circle' : (isFolder ? 'folder' : 'insert_drive_file');
+                const isFolder = (item.kind === 'Folder' || item.SI_KIND === 'Folder');
+                const iconName = isSelected ? 'check_circle' : (isFolder ? 'folder' : 'article');
 
                 row.innerHTML = `
                     <i class="material-icons item-icon">${iconName}</i>
                     <div class="item-info">
                         <div class="item-name">${item.name || item.SI_NAME}</div>
-                        <div class="item-meta">${kind} • ${cuid}</div>
+                        <div class="item-meta">${cuid}</div>
                     </div>
-                    ${isFolder ? `
-                        <div class="drill-icon-btn" onclick="drillDown('${item.id || item.SI_ID}', '${cuid}')">
-                            <i class="material-icons">chevron_right</i>
-                        </div>` : ''}
+                    ${isFolder ? `<div class="drill-icon-btn" onclick="drillDown('${item.id || item.SI_ID}', '${cuid}')"><i class="material-icons">chevron_right</i></div>` : ''}
                 `;
                 container.appendChild(row);
             });
@@ -359,45 +360,61 @@
         function toggleSelection(cuid, rowElement) {
             if (selectedCuids.has(cuid)) {
                 selectedCuids.delete(cuid);
-                rowElement.classList.remove('selected');
-                // Revert icon
-                const icon = rowElement.querySelector('.item-icon');
-                const isFolder = rowElement.innerHTML.includes('chevron_right');
-                icon.innerText = isFolder ? 'folder' : 'insert_drive_file';
+                if (rowElement) rowElement.classList.remove('selected');
+                updateIcon(cuid, false);
             } else {
                 selectedCuids.add(cuid);
-                rowElement.classList.add('selected');
-                rowElement.querySelector('.item-icon').innerText = 'check_circle';
+                if (rowElement) rowElement.classList.add('selected');
+                updateIcon(cuid, true);
             }
             updateSelectionUI();
         }
 
+        function updateIcon(cuid, isSelected) {
+            const row = document.querySelector(`[data-row-cuid="${cuid}"]`);
+            if (row) {
+                const icon = row.querySelector('.item-icon');
+                const isFolder = row.innerHTML.includes('chevron_right');
+                icon.innerText = isSelected ? 'check_circle' : (isFolder ? 'folder' : 'article');
+                isSelected ? row.classList.add('selected') : row.classList.remove('selected');
+            }
+        }
+
         function updateSelectionUI() {
             const list = document.getElementById('cuid-list');
+            list.innerHTML = '';
+            
             if (selectedCuids.size === 0) {
-                list.innerText = 'No items selected';
+                list.innerHTML = '<span style="color: #bbb; font-size: 13px;">No items selected</span>';
                 return;
             }
-            list.innerText = Array.from(selectedCuids).join(', ');
+
+            selectedCuids.forEach(cuid => {
+                const tag = document.createElement('div');
+                tag.className = 'cuid-tag';
+                tag.innerHTML = `
+                    <span>${cuid}</span>
+                    <i class="material-icons remove-tag-btn" onclick="toggleSelection('${cuid}', null)">cancel</i>
+                `;
+                list.appendChild(tag);
+            });
         }
 
         function drillDown(id, cuid) {
-            if (currentCategory === 'Reports') {
-                fetchItems(`/folders/${id}/children`);
-            } else {
-                fetchCmsQuery(cuid);
-            }
+            if (currentCategory === 'Reports') { fetchItems(`/folders/${id}/children`); } 
+            else { fetchCmsQuery(cuid); }
             document.getElementById('breadcrumb').innerText += ` > ${id}`;
         }
 
         function copyCuids() {
             if (selectedCuids.size === 0) return;
-            const text = Array.from(selectedCuids).join('\n');
+            // Updated to single line space-separated
+            const text = Array.from(selectedCuids).join(' ');
             navigator.clipboard.writeText(text);
             const btn = document.querySelector('.copy-btn');
-            btn.innerHTML = '<i class="material-icons" style="font-size:18px;">check</i> Copied!';
+            btn.innerHTML = '<i class="material-icons" style="font-size:18px;">done</i> Copied';
             setTimeout(() => {
-                btn.innerHTML = '<i class="material-icons" style="font-size:18px;">content_copy</i> Copy List';
+                btn.innerHTML = '<i class="material-icons" style="font-size:18px;">content_copy</i> Copy CUIDs';
             }, 2000);
         }
     </script>
