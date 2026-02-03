@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAP BO Picker | Fixed Logic V2.0</title>
+    <title>SAP BO Picker | Cosmetic Update</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         :root {
             --md-red: #d32f2f;
             --md-red-dark: #b71c1c;
-            --md-red-light: #ffcdd2;
             --bg: #f5f5f5;
             --surface: #ffffff;
             --text-main: #212121;
@@ -18,54 +17,47 @@
             --shadow: 0 4px 6px rgba(0,0,0,0.1);
             --selected-bg: #ffebee;
             --tag-bg: #eeeeee;
-            --tag-text: #333333;
         }
 
-        body { font-family: 'Roboto', sans-serif; margin: 0; display: flex; height: 100vh; background-color: var(--bg); color: var(--text-main); }
+        body { font-family: 'Roboto', sans-serif; margin: 0; display: flex; height: 100vh; background-color: var(--bg); }
 
-        /* Sidebar */
         #sidebar { width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.05); z-index: 10; }
         .brand-header { background: var(--md-red); color: white; padding: 24px; font-size: 1.2rem; font-weight: 500; display: flex; align-items: center; gap: 12px; }
-        .nav-btn { width: 100%; padding: 14px 24px; border: none; background: none; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 16px; color: var(--text-main); font-size: 14px; transition: all 0.2s; }
-        .nav-btn:hover { background: #fdfdfd; }
+        .nav-btn { width: 100%; padding: 14px 24px; border: none; background: none; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 16px; color: var(--text-main); font-size: 14px; transition: 0.2s; }
         .nav-btn.active { background: var(--selected-bg); color: var(--md-red); border-right: 4px solid var(--md-red); font-weight: bold; }
 
-        /* Main Content */
         #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         
-        header { background: var(--surface); padding: 12px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 50px; }
-        .breadcrumb-item { cursor: pointer; color: var(--md-red); font-size: 13px; font-weight: 500; }
-        .breadcrumb-item:hover { text-decoration: underline; }
-        .breadcrumb-item.current { color: var(--text-secondary); cursor: default; text-decoration: none; }
-        .breadcrumb-sep { color: var(--text-secondary); font-size: 13px; }
+        /* 1. Navigable Breadcrumbs */
+        header { background: var(--surface); padding: 12px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .bc-item { cursor: pointer; color: var(--md-red); font-size: 13px; font-weight: 500; }
+        .bc-item:hover { text-decoration: underline; }
+        .bc-item.last { color: var(--text-secondary); cursor: default; text-decoration: none; }
 
         #content-area { flex: 1; margin: 24px; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); overflow-y: auto; border: 1px solid var(--border); }
 
-        /* List Items */
-        .item-row { display: flex; align-items: center; padding: 14px 24px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s ease; cursor: pointer; position: relative; }
+        .item-row { display: flex; align-items: center; padding: 14px 24px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
         .item-row:hover { background: #fafafa; }
         .item-row.selected { background: var(--selected-bg); border-left: 4px solid var(--md-red); }
         .item-icon { margin-right: 20px; color: var(--text-secondary); font-size: 22px; }
         .item-row.selected .item-icon { color: var(--md-red); }
         .item-info { flex: 1; overflow: hidden; }
-        .item-name { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .item-meta { font-size: 11px; color: var(--text-secondary); font-family: monospace; margin-top: 2px; }
+        .item-name { font-size: 15px; font-weight: 500; }
+        .item-meta { font-size: 11px; color: var(--text-secondary); font-family: monospace; }
 
-        .drill-icon-btn { padding: 8px; border-radius: 50%; color: var(--md-red); display: flex; transition: background 0.2s; z-index: 5; }
-        .drill-icon-btn:hover { background: var(--md-red-light); }
+        .drill-icon-btn { padding: 8px; border-radius: 50%; color: var(--md-red); display: flex; }
+        .drill-icon-btn:hover { background: #ffcdd2; }
 
-        /* Selection Basket */
         #selection-box { background: var(--surface); margin: 0 24px 24px 24px; padding: 20px; border-radius: 12px; box-shadow: var(--shadow); border-top: 4px solid var(--md-red); }
-        #cuid-list { display: flex; flex-wrap: wrap; gap: 6px; background: #fcfcfc; padding: 12px; border-radius: 6px; max-height: 120px; overflow-y: auto; margin: 12px 0; border: 1px solid #f0f0f0; }
-        
-        /* Rectangular Tags as requested */
-        .cuid-tag { background: var(--tag-bg); color: var(--tag-text); padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; border: 1px solid #ddd; }
+        #cuid-list { display: flex; flex-wrap: wrap; gap: 6px; background: #fcfcfc; padding: 12px; border-radius: 6px; min-height: 40px; border: 1px solid #f0f0f0; margin: 12px 0; }
+
+        /* 2. Rectangular Tags Style */
+        .cuid-tag { background: var(--tag-bg); color: #333; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 8px; font-size: 12px; border: 1px solid #ddd; }
         .remove-tag-btn { cursor: pointer; font-size: 14px; background: var(--md-red); color: white; border-radius: 2px; padding: 1px; }
 
         .copy-btn { background: var(--md-red); color: white; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; }
         .config-box { padding: 24px; border-top: 1px solid var(--border); }
-        .config-box input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; outline-color: var(--md-red); }
-        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary); padding: 20px; text-align: center; }
+        .config-box input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -78,26 +70,19 @@
             <button class="nav-btn" onclick="loadRoot('Connections', this)"><i class="material-icons">settings_ethernet</i> Connections</button>
         </div>
         <div class="config-box" style="margin-top: auto;">
-            <p style="font-size: 11px; font-weight: bold; color: var(--text-secondary); margin-bottom: 10px;">AUTH TOKEN</p>
             <input type="password" id="token" placeholder="X-SAP-LogonToken">
         </div>
     </div>
 
     <div id="main">
-        <header id="breadcrumb-container">
-            <span class="breadcrumb-item current">Select a source</span>
-        </header>
-
-        <div id="content-area">
-            <div class="empty-state"><i class="material-icons" style="font-size: 64px; opacity: 0.1;">folder_shared</i><p>Select a category from the sidebar to start.</p></div>
-        </div>
-
+        <header id="bc-container"></header>
+        <div id="content-area"></div>
         <div id="selection-box">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 14px; font-weight: 700; color: var(--md-red-dark);">Selection Basket</span>
-                <button class="copy-btn" onclick="copyCuids()"><i class="material-icons">content_copy</i> Copy CUID List</button>
+                <strong>Selection Basket</strong>
+                <button class="copy-btn" onclick="copyCuids()"><i class="material-icons">content_copy</i> Copy CUIDs</button>
             </div>
-            <div id="cuid-list"><span style="color: #bbb; font-size: 12px;">Items will appear here...</span></div>
+            <div id="cuid-list"></div>
         </div>
     </div>
 
@@ -105,6 +90,9 @@
         const BASE_URL = "<hosturl>:6405/biprws/v1";
         const ROOT_CUIDS = { Universes: "SI_UNIVERSE_ROOT_CUID", Connections: "SI_CONNECTION_ROOT_CUID" };
 
+        /**
+         * 3. ICON MAP - Customizable Icons per SI_KIND
+         */
         const ICON_MAP = {
             'Folder': 'folder',
             'Webi': 'insert_chart',
@@ -114,83 +102,55 @@
             'Default': 'article'
         };
 
-        let selectionMap = new Map(); // CUID -> {name, kind}
+        let selectionMap = new Map();
         let currentCategory = '';
-        let navHistory = []; // [{name, id, cuid}]
+        let navStack = []; // [{name, id, cuid}]
 
         async function apiRequest(endpoint, method = 'GET', body = null) {
             const token = document.getElementById('token').value;
-            if (!token) { alert("Please provide a Logon Token!"); throw new Error("No Token"); }
-            
-            const response = await fetch(`${BASE_URL}${endpoint}`, {
-                method,
-                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-SAP-LogonToken': token },
-                body: body ? JSON.stringify(body) : null
-            });
-            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-SAP-LogonToken': token };
+            const response = await fetch(`${BASE_URL}${endpoint}`, { method, headers, body: body ? JSON.stringify(body) : null });
             return response.json();
         }
 
         function loadRoot(category, btnElement) {
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             btnElement.classList.add('active');
-            
             currentCategory = category;
-            const rootCuid = category === 'Reports' ? null : ROOT_CUIDS[category];
-            navHistory = [{ name: category, id: null, cuid: rootCuid }];
-            
+            const rootCuid = (category === 'Reports') ? null : ROOT_CUIDS[category];
+            navStack = [{ name: category, id: null, cuid: rootCuid }];
+            renderUI();
+        }
+
+        async function renderUI() {
             updateBreadcrumbs();
-            fetchCurrentLevel();
-        }
-
-        async function fetchCurrentLevel() {
-            const current = navHistory[navHistory.length - 1];
+            const curr = navStack[navStack.length - 1];
             const container = document.getElementById('content-area');
-            container.innerHTML = '<div class="empty-state"><p>Fetching data...</p></div>';
+            container.innerHTML = '<p style="padding:20px">Loading...</p>';
 
-            try {
-                let items = [];
-                if (currentCategory === 'Reports') {
-                    const endpoint = current.id ? `/folders/${current.id}/children` : '/folders';
-                    const data = await apiRequest(endpoint);
-                    // Handle varying API response structures
-                    items = data.entries || (data.folders ? data.folders.entries : []);
-                } else {
-                    const query = `SELECT SI_ID, SI_CUID, SI_NAME, SI_KIND FROM CI_INFOOBJECTS, CI_APPOBJECTS, CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${current.cuid}' ORDER BY SI_KIND`;
-                    const data = await apiRequest('/cmsquery', 'POST', { query });
-                    items = data.entries || [];
-                }
-                renderList(items);
-            } catch (err) {
-                container.innerHTML = `<div class="empty-state" style="color:var(--md-red)">Error: ${err.message}</div>`;
+            let items = [];
+            if (currentCategory === 'Reports') {
+                const endpoint = curr.id ? `/folders/${curr.id}/children` : '/folders';
+                const data = await apiRequest(endpoint);
+                items = data.entries || (data.folders ? data.folders.entries : []);
+            } else {
+                const query = `SELECT SI_ID, SI_CUID, SI_NAME, SI_KIND FROM CI_INFOOBJECTS, CI_APPOBJECTS, CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${curr.cuid}' ORDER BY SI_KIND`;
+                const data = await apiRequest('/cmsquery', 'POST', { query });
+                items = data.entries || [];
             }
-        }
-
-        function renderList(items) {
-            const container = document.getElementById('content-area');
-            container.innerHTML = '';
             
-            if (!items || items.length === 0) {
-                container.innerHTML = '<div class="empty-state"><p>No items found in this location.</p></div>';
-                return;
-            }
-
+            container.innerHTML = '';
             items.forEach(item => {
-                const cuid = item.SI_CUID || item.cuid;
-                const id = item.SI_ID || item.id;
-                const name = item.SI_NAME || item.name;
-                const kind = item.SI_KIND || item.kind || 'Default';
-                
+                const cuid = item.cuid || item.SI_CUID;
+                const id = item.id || item.SI_ID;
+                const name = item.name || item.SI_NAME;
+                const kind = item.kind || item.SI_KIND || 'Default';
+                const isFolder = (kind === 'Folder');
                 const isSelected = selectionMap.has(cuid);
-                const isFolder = kind === 'Folder' || item.type === 'Folder';
 
                 const row = document.createElement('div');
                 row.className = `item-row ${isSelected ? 'selected' : ''}`;
-                row.setAttribute('data-cuid', cuid);
-                
-                row.onclick = (e) => {
-                    if (!e.target.closest('.drill-icon-btn')) toggleSelection(cuid, name, kind);
-                };
+                row.onclick = (e) => { if(!e.target.closest('.drill-icon-btn')) toggleSelection(cuid, name, kind); };
 
                 const icon = isSelected ? 'check_circle' : (ICON_MAP[kind] || ICON_MAP['Default']);
 
@@ -200,102 +160,57 @@
                         <div class="item-name">${name}</div>
                         <div class="item-meta">${kind} | ${cuid}</div>
                     </div>
-                    ${isFolder ? `
-                        <div class="drill-icon-btn" onclick="drillTo('${id}', '${cuid}', '${name}')">
-                            <i class="material-icons">chevron_right</i>
-                        </div>` : ''}
+                    ${isFolder ? `<div class="drill-icon-btn" onclick="drillTo('${id}','${cuid}','${name}')"><i class="material-icons">chevron_right</i></div>` : ''}
                 `;
                 container.appendChild(row);
             });
         }
 
         function drillTo(id, cuid, name) {
-            navHistory.push({ name, id, cuid });
-            updateBreadcrumbs();
-            fetchCurrentLevel();
+            navStack.push({ name, id, cuid });
+            renderUI();
         }
 
-        function jumpTo(index) {
-            navHistory = navHistory.slice(0, index + 1);
-            updateBreadcrumbs();
-            fetchCurrentLevel();
+        function jumpTo(idx) {
+            navStack = navStack.slice(0, idx + 1);
+            renderUI();
         }
 
         function updateBreadcrumbs() {
-            const container = document.getElementById('breadcrumb-container');
+            const container = document.getElementById('bc-container');
             container.innerHTML = '';
-            navHistory.forEach((step, index) => {
-                const item = document.createElement('span');
-                item.className = index === navHistory.length - 1 ? 'breadcrumb-item current' : 'breadcrumb-item';
-                item.innerText = step.name;
-                if (index < navHistory.length - 1) item.onclick = () => jumpTo(index);
-                container.appendChild(item);
-
-                if (index < navHistory.length - 1) {
-                    const sep = document.createElement('span');
-                    sep.className = 'breadcrumb-sep';
-                    sep.innerText = ' > ';
-                    container.appendChild(sep);
-                }
+            navStack.forEach((step, i) => {
+                const span = document.createElement('span');
+                span.className = (i === navStack.length - 1) ? 'bc-item last' : 'bc-item';
+                span.innerText = step.name;
+                if (i < navStack.length - 1) span.onclick = () => jumpTo(i);
+                container.appendChild(span);
+                if (i < navStack.length - 1) container.innerHTML += ' <span class="material-icons" style="font-size:14px;color:#999">chevron_right</span> ';
             });
         }
 
         function toggleSelection(cuid, name, kind) {
-            if (selectionMap.has(cuid)) {
-                selectionMap.delete(cuid);
-            } else {
-                selectionMap.set(cuid, { name, kind });
-            }
-            refreshViewStates();
-            updateBasketUI();
+            selectionMap.has(cuid) ? selectionMap.delete(cuid) : selectionMap.set(cuid, { name, kind });
+            renderUI();
+            updateBasket();
         }
 
-        function refreshViewStates() {
-            document.querySelectorAll('.item-row').forEach(row => {
-                const cuid = row.getAttribute('data-cuid');
-                const meta = row.querySelector('.item-meta').innerText.split(' | ')[0];
-                const icon = row.querySelector('.item-icon');
-                const isFolder = row.innerHTML.includes('chevron_right');
-
-                if (selectionMap.has(cuid)) {
-                    row.classList.add('selected');
-                    icon.innerText = 'check_circle';
-                } else {
-                    row.classList.remove('selected');
-                    icon.innerText = ICON_MAP[meta] || ICON_MAP['Default'];
-                }
-            });
-        }
-
-        function updateBasketUI() {
+        function updateBasket() {
             const list = document.getElementById('cuid-list');
             list.innerHTML = '';
-            if (selectionMap.size === 0) {
-                list.innerHTML = '<span style="color: #bbb; font-size: 12px;">No items selected</span>';
-                return;
-            }
-
-            selectionMap.forEach((data, cuid) => {
+            selectionMap.forEach((val, key) => {
                 const tag = document.createElement('div');
                 tag.className = 'cuid-tag';
-                const icon = ICON_MAP[data.kind] || ICON_MAP['Default'];
-                tag.innerHTML = `
-                    <i class="material-icons" style="font-size:16px;">${icon}</i>
-                    <span>${data.name}</span>
-                    <i class="material-icons remove-tag-btn" onclick="toggleSelection('${cuid}', '${data.name}', '${data.kind}')">close</i>
-                `;
+                tag.innerHTML = `<i class="material-icons" style="font-size:16px;color:#757575">${ICON_MAP[val.kind] || ICON_MAP['Default']}</i>
+                                 <span>${val.name}</span>
+                                 <i class="material-icons remove-tag-btn" onclick="toggleSelection('${key}','','')">close</i>`;
                 list.appendChild(tag);
             });
         }
 
         function copyCuids() {
-            if (selectionMap.size === 0) return;
-            const text = Array.from(selectionMap.keys()).join(' ');
-            navigator.clipboard.writeText(text);
-            const btn = document.querySelector('.copy-btn');
-            const original = btn.innerHTML;
-            btn.innerHTML = '<i class="material-icons">done</i> Copied!';
-            setTimeout(() => btn.innerHTML = original, 2000);
+            navigator.clipboard.writeText(Array.from(selectionMap.keys()).join(' '));
+            alert("Copied!");
         }
     </script>
 </body>
