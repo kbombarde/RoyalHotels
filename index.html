@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAP BO Picker | Final Fixed Logic</title>
+    <title>SAP BO Picker | Unified Folder Logic</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         :root {
@@ -21,7 +21,6 @@
 
         body { font-family: 'Roboto', sans-serif; margin: 0; display: flex; height: 100vh; background-color: var(--bg); overflow: hidden; }
 
-        /* Sidebar */
         #sidebar { width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.05); z-index: 10; }
         .brand-header { background: var(--md-red); color: white; padding: 24px; font-size: 1.2rem; font-weight: 500; display: flex; align-items: center; gap: 12px; }
         .nav-btn { width: 100%; padding: 14px 24px; border: none; background: none; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 16px; color: var(--text-main); font-size: 14px; transition: 0.2s; }
@@ -29,7 +28,6 @@
 
         #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* Navigable Breadcrumbs */
         header { background: var(--surface); padding: 12px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 48px; }
         .bc-item { cursor: pointer; color: var(--md-red); font-size: 13px; font-weight: 500; }
         .bc-item:hover { text-decoration: underline; }
@@ -49,17 +47,15 @@
         .drill-icon-btn { padding: 8px; border-radius: 50%; color: var(--md-red); display: flex; }
         .drill-icon-btn:hover { background: #ffcdd2; }
 
-        /* Selection Basket */
         #selection-box { background: var(--surface); margin: 0 24px 24px 24px; padding: 20px; border-radius: 12px; box-shadow: var(--shadow); border-top: 4px solid var(--md-red); }
         #cuid-list { display: flex; flex-wrap: wrap; gap: 6px; background: #fcfcfc; padding: 12px; border-radius: 6px; min-height: 40px; max-height: 120px; overflow-y: auto; border: 1px solid #f0f0f0; margin: 12px 0; }
 
-        /* Rectangular Tags */
         .cuid-tag { background: var(--tag-bg); color: #333; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 8px; font-size: 12px; border: 1px solid #ddd; }
         .remove-tag-btn { cursor: pointer; font-size: 14px; background: var(--md-red); color: white; border-radius: 2px; padding: 1px; }
 
         .copy-btn { background: var(--md-red); color: white; border: none; padding: 10px 24px; border-radius: 6px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; }
         .config-box { padding: 24px; border-top: 1px solid var(--border); }
-        .config-box input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; outline-color: var(--md-red); }
+        .config-box input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -95,7 +91,6 @@
         const BASE_URL = "<hosturl>:6405/biprws/v1";
         const ROOT_CUIDS = { Universes: "SI_UNIVERSE_ROOT_CUID", Connections: "SI_CONNECTION_ROOT_CUID" };
 
-        // Centralized Icon Mapping
         const ICON_MAP = {
             'Folder': 'folder',
             'Webi': 'insert_chart',
@@ -107,7 +102,7 @@
 
         let selectionMap = new Map();
         let currentCategory = '';
-        let navStack = []; // [{name, id, cuid}]
+        let navStack = [];
 
         async function apiRequest(endpoint, method = 'GET', body = null) {
             const token = document.getElementById('token').value;
@@ -126,7 +121,6 @@
             btnElement.classList.add('active');
             currentCategory = category;
             
-            // Set initial stack state
             const rootCuid = (category === 'Reports') ? null : ROOT_CUIDS[category];
             navStack = [{ name: category, id: null, cuid: rootCuid }];
             renderContent();
@@ -141,12 +135,10 @@
             try {
                 let items = [];
                 if (currentCategory === 'Reports') {
-                    // REST Folder Endpoint Logic
                     const endpoint = curr.id ? `/folders/${curr.id}/children` : '/folders';
                     const data = await apiRequest(endpoint);
                     items = data.entries || (data.folders ? data.folders.entries : []);
                 } else {
-                    // CMS Query Logic
                     const query = `SELECT SI_ID, SI_CUID, SI_NAME, SI_KIND FROM CI_INFOOBJECTS, CI_APPOBJECTS, CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${curr.cuid}' ORDER BY SI_KIND`;
                     const data = await apiRequest('/cmsquery', 'POST', { query });
                     items = data.entries || [];
@@ -156,27 +148,31 @@
                 if(items.length === 0) container.innerHTML = '<p style="padding:20px; color:#999">Empty directory</p>';
 
                 items.forEach(item => {
-                    // Unified mapping for different response keys
                     const cuid = item.cuid || item.SI_CUID;
                     const id = item.id || item.SI_ID;
                     const name = item.name || item.SI_NAME;
-                    const kind = item.kind || item.SI_KIND || 'Default';
-                    const isFolder = (kind === 'Folder');
+                    
+                    // IMPROVED FOLDER DETECTION
+                    // Checks SI_KIND, kind, and type for "Folder" regardless of case
+                    let rawKind = item.kind || item.SI_KIND || item.type || 'Default';
+                    let isFolder = rawKind.toLowerCase().includes('folder');
+                    let displayKind = isFolder ? 'Folder' : rawKind;
+
                     const isSelected = selectionMap.has(cuid);
 
                     const row = document.createElement('div');
                     row.className = `item-row ${isSelected ? 'selected' : ''}`;
                     row.onclick = (e) => { 
-                        if(!e.target.closest('.drill-icon-btn')) toggleSelection(cuid, name, kind); 
+                        if(!e.target.closest('.drill-icon-btn')) toggleSelection(cuid, name, displayKind); 
                     };
 
-                    const icon = isSelected ? 'check_circle' : (ICON_MAP[kind] || ICON_MAP['Default']);
+                    const icon = isSelected ? 'check_circle' : (ICON_MAP[displayKind] || ICON_MAP['Default']);
 
                     row.innerHTML = `
                         <i class="material-icons item-icon">${icon}</i>
                         <div class="item-info">
                             <div class="item-name">${name}</div>
-                            <div class="item-meta">${kind} | ${cuid}</div>
+                            <div class="item-meta">${displayKind} | ${cuid}</div>
                         </div>
                         ${isFolder ? `
                             <div class="drill-icon-btn" onclick="drillTo('${id}','${cuid}','${name}')">
@@ -186,18 +182,16 @@
                     container.appendChild(row);
                 });
             } catch (err) {
-                container.innerHTML = `<p style="padding:20px; color:red">Error loading data. Check token and connection.</p>`;
+                container.innerHTML = `<p style="padding:20px; color:red">Error loading data.</p>`;
             }
         }
 
         function drillTo(id, cuid, name) {
-            // Push new level to stack
             navStack.push({ name, id, cuid });
             renderContent();
         }
 
         function jumpTo(idx) {
-            // Pop stack to specified index
             navStack = navStack.slice(0, idx + 1);
             renderContent();
         }
@@ -211,38 +205,26 @@
                 span.innerText = step.name;
                 if (i < navStack.length - 1) span.onclick = () => jumpTo(i);
                 container.appendChild(span);
-                
-                if (i < navStack.length - 1) {
-                    const sep = document.createElement('i');
-                    sep.className = 'material-icons';
-                    sep.style = "font-size:16px; color:#ccc; margin:0 4px";
-                    sep.innerText = 'chevron_right';
-                    container.appendChild(sep);
-                }
+                if (i < navStack.length - 1) container.innerHTML += ' <i class="material-icons" style="font-size:16px;vertical-align:middle;color:#ccc;margin:0 4px">chevron_right</i> ';
             });
         }
 
         function toggleSelection(cuid, name, kind) {
-            if(selectionMap.has(cuid)) {
-                selectionMap.delete(cuid);
-            } else {
-                selectionMap.set(cuid, { name, kind });
-            }
-            renderContent(); // Refresh main list icons
-            updateBasket();  // Refresh tag list
+            if(selectionMap.has(cuid)) { selectionMap.delete(cuid); } 
+            else { selectionMap.set(cuid, { name, kind }); }
+            renderContent();
+            updateBasket();
         }
 
         function updateBasket() {
             const list = document.getElementById('cuid-list');
             list.innerHTML = '';
             if(selectionMap.size === 0) list.innerHTML = '<span style="color:#bbb; font-size:12px">No items selected</span>';
-            
             selectionMap.forEach((val, key) => {
                 const tag = document.createElement('div');
                 tag.className = 'cuid-tag';
-                const icon = ICON_MAP[val.kind] || ICON_MAP['Default'];
                 tag.innerHTML = `
-                    <i class="material-icons" style="font-size:16px;color:#757575">${icon}</i>
+                    <i class="material-icons" style="font-size:16px;color:#757575">${ICON_MAP[val.kind] || ICON_MAP['Default']}</i>
                     <span>${val.name}</span>
                     <i class="material-icons remove-tag-btn" onclick="toggleSelection('${key}','','')">close</i>
                 `;
@@ -254,9 +236,9 @@
             const text = Array.from(selectionMap.keys()).join(' ');
             navigator.clipboard.writeText(text).then(() => {
                 const btn = document.querySelector('.copy-btn');
-                const oldText = btn.innerHTML;
+                const old = btn.innerHTML;
                 btn.innerHTML = '<i class="material-icons">done</i> Copied';
-                setTimeout(() => btn.innerHTML = oldText, 2000);
+                setTimeout(() => btn.innerHTML = old, 2000);
             });
         }
     </script>
