@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAP BO Picker | Fixed Logic</title>
+    <title>SAP BO Picker | Red & White Material</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         :root {
@@ -17,6 +17,9 @@
             --border: #e0e0e0;
             --shadow: 0 4px 6px rgba(0,0,0,0.1);
             --selected-bg: #ffebee;
+            /* Basket Tag Colors */
+            --tag-bg: #eeeeee;
+            --tag-text: #333333;
         }
 
         body {
@@ -142,6 +145,7 @@
             outline-color: var(--md-red);
         }
 
+        /* Selection Basket Update */
         #selection-box {
             background: var(--surface);
             margin: 0 24px 24px 24px;
@@ -154,32 +158,47 @@
         #cuid-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 6px;
             background: #fcfcfc;
             padding: 12px;
             border-radius: 6px;
             min-height: 40px;
-            max-height: 120px;
+            max-height: 150px;
             overflow-y: auto;
             margin: 12px 0;
             border: 1px solid #f0f0f0;
         }
 
+        /* Rectangular Tag Style */
         .cuid-tag {
-            background: white;
-            border: 1px solid var(--md-red-light);
-            color: var(--md-red-dark);
-            padding: 6px 12px;
-            border-radius: 20px;
+            background: var(--tag-bg);
+            color: var(--tag-text);
+            padding: 4px 8px;
+            border-radius: 4px; /* Slightly rounded edges, not a pill */
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 500;
+            border: 1px solid #ddd;
         }
 
-        .remove-tag-btn { cursor: pointer; font-size: 18px; color: var(--text-secondary); }
-        .remove-tag-btn:hover { color: var(--md-red); }
+        .tag-main-icon { font-size: 16px; color: var(--text-secondary); }
+
+        .remove-tag-btn {
+            cursor: pointer;
+            font-size: 14px;
+            background: var(--md-red);
+            color: white;
+            border-radius: 2px;
+            padding: 1px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .remove-tag-btn:hover { background: var(--md-red-dark); }
 
         .copy-btn {
             background: var(--md-red);
@@ -233,7 +252,7 @@
     <div id="main">
         <header>
             <div id="breadcrumb">Home</div>
-            <div style="font-size: 12px; color: var(--md-red); font-weight: 700;">V1.1 STABLE</div>
+            <div style="font-size: 12px; color: var(--md-red); font-weight: 700;">V1.2</div>
         </header>
 
         <div id="content-area">
@@ -290,7 +309,7 @@
             document.getElementById('breadcrumb').innerText = category;
             
             if (category === 'Reports') {
-                fetchReportChildren(); // Load root folders
+                fetchReportChildren();
             } else {
                 fetchCmsQuery(ROOT_CUIDS[category]);
             }
@@ -299,11 +318,9 @@
         async function fetchReportChildren(folderId = null) {
             const container = document.getElementById('content-area');
             container.innerHTML = '<div class="empty-state"><p>Loading Reports...</p></div>';
-            
             const endpoint = folderId ? `/folders/${folderId}/children` : '/folders';
             try {
                 const data = await apiRequest(endpoint);
-                // Report API uses 'folders' or 'entries' depending on version/endpoint
                 const entries = data.entries || (data.folders ? data.folders.entries : []);
                 renderList(entries);
             } catch (err) {
@@ -314,7 +331,6 @@
         async function fetchCmsQuery(parentCuid) {
             const container = document.getElementById('content-area');
             container.innerHTML = '<div class="empty-state"><p>Querying Objects...</p></div>';
-            
             const query = `SELECT SI_ID, SI_CUID, SI_NAME, SI_KIND FROM CI_INFOOBJECTS, CI_APPOBJECTS, CI_SYSTEMOBJECTS WHERE SI_PARENT_CUID='${parentCuid}' ORDER BY SI_KIND`;
             try {
                 const data = await apiRequest('/cmsquery', 'POST', { query });
@@ -334,7 +350,6 @@
             }
 
             items.forEach(item => {
-                // Handle mixed naming conventions between /folders and /cmsquery
                 const cuid = item.cuid || item.SI_CUID;
                 const name = item.name || item.SI_NAME;
                 const id = item.id || item.SI_ID;
@@ -342,14 +357,13 @@
 
                 const isSelected = selectionMap.has(cuid);
                 const isFolder = (kind === 'Folder');
-
                 const row = document.createElement('div');
                 row.className = `item-row ${isSelected ? 'selected' : ''}`;
                 row.setAttribute('data-cuid', cuid);
                 
                 row.onclick = (e) => {
                     if(!e.target.closest('.drill-icon-btn')) {
-                        toggleSelection(cuid, name);
+                        toggleSelection(cuid, name, kind);
                     }
                 };
 
@@ -370,13 +384,12 @@
             });
         }
 
-        function toggleSelection(cuid, name) {
+        function toggleSelection(cuid, name, kind) {
             if (selectionMap.has(cuid)) {
                 selectionMap.delete(cuid);
             } else {
-                selectionMap.set(cuid, name);
+                selectionMap.set(cuid, { name, kind });
             }
-            // Update icons for currently visible items
             updateUIVisuals();
             updateSelectionBasket();
         }
@@ -406,12 +419,14 @@
                 return;
             }
 
-            selectionMap.forEach((name, cuid) => {
+            selectionMap.forEach((data, cuid) => {
                 const tag = document.createElement('div');
                 tag.className = 'cuid-tag';
+                const icon = data.kind === 'Folder' ? 'folder' : 'article';
                 tag.innerHTML = `
-                    <span>${name}</span>
-                    <i class="material-icons remove-tag-btn" onclick="toggleSelection('${cuid}', '${name}')">cancel</i>
+                    <i class="material-icons tag-main-icon">${icon}</i>
+                    <span>${data.name}</span>
+                    <i class="material-icons remove-tag-btn" onclick="toggleSelection('${cuid}', '${data.name}', '${data.kind}')">close</i>
                 `;
                 list.appendChild(tag);
             });
@@ -430,7 +445,6 @@
             if (selectionMap.size === 0) return;
             const text = Array.from(selectionMap.keys()).join(' ');
             navigator.clipboard.writeText(text);
-            
             const btn = document.querySelector('.copy-btn');
             btn.innerHTML = '<i class="material-icons" style="font-size:18px;">done</i> Copied';
             setTimeout(() => {
