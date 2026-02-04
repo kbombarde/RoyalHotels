@@ -1,0 +1,86 @@
+
+1.1
+Focused on automating manual SAP BO administrative processes to improve efficiency.
+Applied a future-oriented mindset by aligning solutions with SAP’s roadmap.
+Built reusable frameworks to support scaling and self-service automation.
+Continuously enhanced skills across REST APIs, Ansible, Python, and UI automation.
+Prepared solutions with long-term maintainability and extensibility in mind.
+
+1.2
+Worked effectively with cross-functional teams and team members.
+Valued operational expertise from Ops and App Admin teams during solution design.
+Maintained open, respectful, and professional communication.
+Encouraged collaborative problem-solving and shared ownership.
+Contributed positively to an inclusive and supportive team environment.
+
+1.3
+
+Consistently adhered to Nomura’s Code of Conduct and professional standards.
+Completed all mandatory compliance, risk, and ethics trainings within required timelines.
+Ensured automation workflows followed security, access control, and governance guidelines.
+Maintained transparency through documentation, reviews, and stakeholder communication.
+Handled responsibilities with integrity in a regulated production environment.
+
+1.4
+
+Demonstrated leadership through strong ownership, accountability, and execution excellence.
+Collaborated closely with Ops and App Admin stakeholders to ensure automation was practical and usable.
+Took responsibility for design decisions, implementation, and handover readiness.
+Maintained a delivery-focused mindset while supporting team collaboration.
+Identified opportunities to further grow leadership impact through knowledge sharing and broader involvement.
+
+1.5
+
+Supported infrastructure modernisation by eliminating dependencies on deprecated SAP Java SDKs.
+Adopted REST APIs, Python, and Ansible-based automation for long-term maintainability.
+Improved operational stability by reducing manual, error-prone administrative tasks.
+Introduced reusable automation components aligned with modern DevOps practices.
+Ensured solutions were compatible with future platform upgrades and integrations.
+
+1.6
+
+Delivered multiple SAP BusinessObjects automation solutions aligned with GIS Core Infrastructure and automation objectives.
+Worked closely with Ops and App Admin teams to translate operational requirements into scalable automation.
+Reduced manual administrative effort and improved reliability of access, reporting, and migration workflows.
+Ensured solutions were future-ready by aligning with SAP-supported APIs and automation standards.
+Maintained strong ownership from design through QA readiness and handover.
+
+3.1
+
+Completed a 5-day, classroom-based Ansible training organized by Nomura.
+Applied the learning directly by implementing Ansible within automation workflows.
+Strengthened practical understanding of orchestration, surveys, and execution models.
+Continued self-learning through SAP documentation and hands-on experimentation.
+Ensured learning outcomes translated into real delivery impact.
+
+Significant Achievements
+
+Since joining Nomura in June 2025, I have delivered multiple high-impact automation initiatives for SAP BusinessObjects in close collaboration with the Operations and Application Administration teams. My primary contribution has been converting operational requirements into reliable, scalable, and future-ready automation while ensuring alignment with SAP standards and Nomura governance.
+
+The most significant achievement was the SAP BusinessObjects User Access Provisioning & Revoke Automation, where I replaced a partially implemented, deprecated Java SDK–based solution with a RESTful Web Services–based implementation aligned with SAP’s future roadmap. During this work, I addressed critical gaps where neither the legacy SDK nor REST APIs supported required functionality (such as on-demand LDAP sync). To mitigate this, I designed and implemented a fallback UI automation framework, ensuring workflow stability and eliminating manual intervention. This solution has been successfully handed over to the integration team for end-to-end workflow adoption.
+
+I also delivered the Scheduled Instances On-Demand Export Automation, addressing a long-standing operational challenge where SAP BO did not provide native export capabilities for scheduled instances. Using the fallback UI automation framework and Ansible surveys, I enabled parameter-driven exports across environments and regions, automatically delivering spreadsheet outputs to users. This solution significantly reduced manual effort and improved operational efficiency and auditability.
+
+In addition, I developed Promotion Management Automation for non-production environments using Ansible, Python, and SAP’s LCM CLI. This automation streamlined complex migration workflows, reduced execution errors, and standardized content promotion across environments. The solution is ready for QA and designed for future integration with self-service portals.
+
+Beyond individual projects, I built a reusable UI automation framework and a SAP BO Object Picker UI POC, laying the foundation for centralized, user-friendly execution of automation workflows beyond the limitations of Ansible surveys. Across all initiatives, I maintained strong ownership from design through handover, invested significant effort in studying SAP documentation, and ensured solutions were robust, maintainable, and extensible.
+
+Areas of Improvement 
+
+Leadership & Influence
+
+During this review period, my contributions were primarily execution-focused, with a strong emphasis on technical delivery and implementation. I worked closely with Ops and Application Administration stakeholders who provided domain expertise and guided automation priorities. This collaborative approach enabled effective and timely delivery of high-quality automation solutions.
+
+However, I recognize an opportunity to further strengthen my leadership impact beyond execution. As the automation solutions mature and move toward wider adoption, I aim to increase my involvement in early-stage solution discussions, prioritization, and design conversations, rather than focusing predominantly on implementation.
+
+Key development areas include:
+	•	Increasing visibility and influence through structured knowledge-sharing sessions, walkthroughs, and demos.
+	•	Contributing more actively to solution shaping and automation standards as adoption scales.
+	•	Gradually taking on opportunities to mentor or guide peers, particularly around automation patterns, tooling, and best practices.
+
+Action Plan:
+	•	Proactively participate in design and requirement discussions with Ops and stakeholders.
+	•	Conduct regular walkthroughs for delivered automation to support adoption and shared understanding.
+	•	Build confidence in guiding best practices while maintaining strong delivery ownership.
+
+This development focus will help me evolve from a strong individual contributor into a broader technical leader, while continuing to deliver high-impact automation aligned with Nomura’s goals.
