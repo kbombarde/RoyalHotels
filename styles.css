@@ -4,58 +4,36 @@ body {
   background: black;
 }
 
-/* 🔥 HIT FLASH */
 body.hit {
   background: red;
   transition: background 0.1s;
 }
 
-/* MENU */
 #menu {
   position: absolute;
   top: 40%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 10;
 }
 
-/* 🎮 SCORE */
 #score {
   position: absolute;
   top: 20px;
   left: 50%;
   transform: translateX(-50%);
-
   font-family: 'Orbitron', sans-serif;
   font-size: 48px;
-  font-weight: 800;
-
   color: #00ffcc;
-
-  text-shadow:
-    0 0 5px #00ffcc,
-    0 0 15px #00ffcc,
-    0 0 30px #00ffaa;
-
-  transition: transform 0.15s;
+  text-shadow: 0 0 20px #00ffcc;
 }
 
-/* 🔥 COMBO */
 #combo {
   position: absolute;
   top: 80px;
   left: 50%;
   transform: translateX(-50%);
-
   font-family: 'Orbitron', sans-serif;
   font-size: 28px;
-
   color: #ffcc00;
-
-  text-shadow:
-    0 0 5px #ffcc00,
-    0 0 15px orange;
-
   opacity: 0;
-  transition: all 0.2s ease;
 }
