@@ -12,19 +12,40 @@ const scoreEl = document.getElementById('score');
 const menu = document.getElementById('menu');
 
 // ========================
-// 🔊 SOUNDS
+// 🔊 SOUND SYSTEM (FIXED)
 // ========================
-const coinSound = new Audio('./assets/sounds/coin.mp3');
-const jumpSound = new Audio('./assets/sounds/jump.mp3');
-const duckSound = new Audio('./assets/sounds/duck.mp3');
-const laneSound = new Audio('./assets/sounds/swish.mp3');
+const sounds = {
+  coin: new Audio('./assets/sounds/coin.mp3'),
+  jump: new Audio('./assets/sounds/jump.mp3'),
+  duck: new Audio('./assets/sounds/duck.mp3'),
+  lane: new Audio('./assets/sounds/swish.mp3')
+};
 
-[coinSound, jumpSound, duckSound, laneSound].forEach(s => s.volume = 0.4);
+Object.values(sounds).forEach(s => {
+  s.volume = 0.5;
+  s.preload = 'auto';
+});
 
-// unlock audio
-window.addEventListener('click', () => {
-  coinSound.play().then(()=>coinSound.pause()).catch(()=>{});
-}, { once: true });
+// ✅ unlock audio on first key press
+let audioUnlocked = false;
+
+function unlockAudio(){
+  if(audioUnlocked) return;
+
+  Object.values(sounds).forEach(s=>{
+    s.play().then(()=>s.pause()).catch(()=>{});
+  });
+
+  audioUnlocked = true;
+}
+
+function playSound(name){
+  if(!audioUnlocked) return;
+
+  const s = sounds[name].cloneNode(); // 🔥 IMPORTANT
+  s.volume = 0.5;
+  s.play().catch(()=>{});
+}
 
 // ========================
 // TEXTURES
@@ -47,8 +68,6 @@ scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, 10, 120);
 
 // ========================
-// CAMERA
-// ========================
 const camera = new THREE.PerspectiveCamera(
   75,
   window.innerWidth/window.innerHeight,
@@ -56,18 +75,13 @@ const camera = new THREE.PerspectiveCamera(
   1000
 );
 
-// ========================
-// RENDERER
-// ========================
 const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById('game'),
   antialias: true
 });
+
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-// ========================
-// LIGHT
-// ========================
 scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
 // ========================
@@ -95,8 +109,6 @@ const track = [];
 
 function createTrack(z){
   const g = new THREE.Group();
-
-  groundTex.repeat.set(4,10);
 
   const ground = new THREE.Mesh(
     new THREE.BoxGeometry(12,0.2,TRACK_LENGTH),
@@ -132,7 +144,7 @@ for(let i=0;i<TRACK_COUNT;i++){
 }
 
 // ========================
-// PARTICLES (REFINED)
+// PARTICLES
 // ========================
 const particles = [];
 
@@ -154,8 +166,6 @@ function spawnParticles(x,y,z){
       y:Math.random()*1.5,
       z:(Math.random()-0.5)*1.5
     };
-
-    p.userData.life = 0.5;
 
     scene.add(p);
     particles.push(p);
@@ -182,37 +192,32 @@ function spawnCoin(){
 }
 
 // ========================
-// CONTROLS + SOUND
+// CONTROLS (🔥 SOUND HERE)
 // ========================
 window.addEventListener('keydown', e=>{
+  unlockAudio(); // 🔥 MUST BE FIRST
+
   if(gameOver) return;
 
   if(e.key==='ArrowLeft'){
-    lane = Math.max(-1,lane-1);
-    laneSound.currentTime=0;
-    laneSound.play();
+    lane=Math.max(-1,lane-1);
+    playSound('lane');
   }
 
   if(e.key==='ArrowRight'){
-    lane = Math.min(1,lane+1);
-    laneSound.currentTime=0;
-    laneSound.play();
+    lane=Math.min(1,lane+1);
+    playSound('lane');
   }
 
   if(e.key==='ArrowUp'&&!isJumping){
     velocityY=8;
     isJumping=true;
-
-    jumpSound.currentTime=0;
-    jumpSound.play();
+    playSound('jump');
   }
 
   if(e.key==='ArrowDown'){
     isDucking=true;
-
-    duckSound.currentTime=0;
-    duckSound.play();
-
+    playSound('duck');
     setTimeout(()=>isDucking=false,400);
   }
 });
@@ -241,9 +246,8 @@ function animate(){
 
   if(!gameOver){
 
-    // physics
-    velocityY -= 20 * delta;
-    y += velocityY * delta;
+    velocityY -= 20*delta;
+    y += velocityY*delta;
 
     if(y<=1.5){
       y=1.5;
@@ -251,41 +255,39 @@ function animate(){
       isJumping=false;
     }
 
-    // camera feel
-    bobTime += delta * 10;
+    bobTime += delta*10;
     const bob = Math.sin(bobTime)*0.1;
 
     const targetX = lane*2;
 
     camera.position.x += (targetX-camera.position.x)*0.2;
-    camera.position.y = (isDucking?1:y) + bob;
+    camera.position.y = (isDucking?1:y)+bob;
     camera.position.z = 5;
 
-    camera.lookAt(camera.position.x, camera.position.y-0.2, -20);
-    camera.rotation.z = -lane * 0.05;
+    camera.lookAt(camera.position.x,camera.position.y-0.2,-20);
+    camera.rotation.z = -lane*0.05;
 
-    // move world
+    // move track
     let farthestZ = Infinity;
 
     for(const t of track){
       t.position.z += SPEED*delta;
-      if(t.position.z < farthestZ) farthestZ = t.position.z;
+      if(t.position.z<farthestZ) farthestZ = t.position.z;
     }
 
     for(const t of track){
-      if(t.position.z > TRACK_LENGTH){
-        t.position.z = farthestZ - TRACK_LENGTH;
+      if(t.position.z>TRACK_LENGTH){
+        t.position.z = farthestZ-TRACK_LENGTH;
       }
     }
 
-    // spawn coins
+    // coins
     coinTimer+=delta;
     if(coinTimer>0.6){
       spawnCoin();
       coinTimer=0;
     }
 
-    // coins
     for(let i=coins.length-1;i>=0;i--){
       const c=coins[i];
 
@@ -300,9 +302,7 @@ function animate(){
         if(hit){
           c.userData.collected=true;
 
-          coinSound.currentTime=0;
-          coinSound.play();
-
+          playSound('coin');
           spawnParticles(c.position.x,c.position.y,c.position.z);
 
           score+=10;
