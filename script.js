@@ -13,7 +13,7 @@ const comboEl = document.getElementById('combo');
 const menu = document.getElementById('menu');
 
 // ========================
-// SOUND (LIGHTWEIGHT)
+// SOUND
 // ========================
 const sounds = {
   coin: new Audio('./assets/sounds/coin.mp3'),
@@ -22,85 +22,85 @@ const sounds = {
   lane: new Audio('./assets/sounds/swish.mp3')
 };
 
-let audioUnlocked = false;
+let audioUnlocked=false;
 
 function unlockAudio(){
   if(audioUnlocked) return;
   Object.values(sounds).forEach(s=>{
     s.play().then(()=>s.pause()).catch(()=>{});
   });
-  audioUnlocked = true;
+  audioUnlocked=true;
 }
 
 function playSound(name){
   if(!audioUnlocked) return;
-  const s = sounds[name].cloneNode();
-  s.volume = 0.5;
+  const s=sounds[name].cloneNode();
+  s.volume=0.5;
   s.play().catch(()=>{});
 }
 
 // ========================
 // TEXTURES
 // ========================
-const loader = new THREE.TextureLoader();
+const loader=new THREE.TextureLoader();
 
-const groundTex = loader.load('./assets/textures/ground.png');
-const railTex = loader.load('./assets/textures/rail.png');
-const coinTex = loader.load('./assets/textures/coin.png');
-const barricadeTex = loader.load('./assets/textures/barricade.png');
-const barTex = loader.load('./assets/textures/bar.png');
-const barrelTex = loader.load('./assets/textures/barrel.png');
-
-// ========================
-// SCENE
-// ========================
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 15, 120);
+const groundTex=loader.load('./assets/textures/ground.png');
+const railTex=loader.load('./assets/textures/rail.png');
+const coinTex=loader.load('./assets/textures/coin.png');
+const barricadeTex=loader.load('./assets/textures/barricade.png');
+const barTex=loader.load('./assets/textures/bar.png');
+const barrelTex=loader.load('./assets/textures/barrel.png');
 
 // ========================
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,15,120);
 
-const renderer = new THREE.WebGLRenderer({
-  canvas: document.getElementById('game'),
-  antialias: true
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+
+const renderer=new THREE.WebGLRenderer({
+  canvas:document.getElementById('game'),
+  antialias:true
 });
-renderer.setSize(innerWidth, innerHeight);
+renderer.setSize(innerWidth,innerHeight);
 
 // ========================
-// LIGHT (FAST + CLEAN)
+// LIGHT
 // ========================
-scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-const light = new THREE.DirectionalLight(0xffffff, 0.6);
+scene.add(new THREE.AmbientLight(0xffffff,0.7));
+const light=new THREE.DirectionalLight(0xffffff,0.6);
 light.position.set(5,10,5);
 scene.add(light);
 
 // ========================
 // PLAYER
 // ========================
-let lane = 0;
-let y = 1.5;
-let velocityY = 0;
+let lane=0;
+let y=1.5;
+let velocityY=0;
 
-let isJumping = false;
-let isDucking = false;
+let isJumping=false;
+let isDucking=false;
 
-let score = 0;
-let combo = 1;
-let comboTimer = 0;
-let gameOver = true;
+let score=0;
+let combo=1;
+let comboTimer=0;
+let gameOver=true;
 
-let bobTime = 0;
+let bobTime=0;
+
+// 🔥 NEW (landing effect)
+let landingImpact=0;
 
 // ========================
 // TRACK
 // ========================
-const track = [];
+const track=[];
 
 function createTrack(z){
-  const g = new THREE.Group();
+  const g=new THREE.Group();
 
-  const ground = new THREE.Mesh(
+  const ground=new THREE.Mesh(
     new THREE.BoxGeometry(12,0.2,TRACK_LENGTH),
     new THREE.MeshStandardMaterial({map:groundTex})
   );
@@ -108,7 +108,7 @@ function createTrack(z){
   g.add(ground);
 
   [-2,0,2].forEach(x=>{
-    const rail = new THREE.Mesh(
+    const rail=new THREE.Mesh(
       new THREE.BoxGeometry(0.25,0.25,TRACK_LENGTH),
       new THREE.MeshStandardMaterial({map:railTex})
     );
@@ -125,18 +125,14 @@ for(let i=0;i<TRACK_COUNT;i++){
 }
 
 // ========================
-// OBJECTS
-// ========================
-const coins = [];
-const obstacles = [];
+const coins=[];
+const obstacles=[];
 
-// ========================
-// SPAWN COIN
 // ========================
 function spawnCoin(){
-  const x = (LEVEL===1)?0:[-2,0,2][Math.random()*3|0];
+  const x=(LEVEL===1)?0:[-2,0,2][Math.random()*3|0];
 
-  const c = new THREE.Mesh(
+  const c=new THREE.Mesh(
     new THREE.PlaneGeometry(0.8,0.8),
     new THREE.MeshBasicMaterial({map:coinTex,transparent:true})
   );
@@ -146,8 +142,6 @@ function spawnCoin(){
   coins.push(c);
 }
 
-// ========================
-// OBSTACLES (ALL LEVEL LOGIC)
 // ========================
 function spawnObstacle(){
 
@@ -180,7 +174,6 @@ function spawnObstacle(){
   createObstacle([-2,0,2][Math.random()*3|0],types[Math.random()*3|0]);
 }
 
-// ========================
 function createObstacle(x,type){
 
   let mesh;
@@ -209,7 +202,7 @@ function createObstacle(x,type){
     mesh.position.set(x,0.8,-60);
   }
 
-  mesh.userData.type = type;
+  mesh.userData.type=type;
 
   scene.add(mesh);
   obstacles.push(mesh);
@@ -226,8 +219,8 @@ window.addEventListener('keydown',e=>{
   if(e.key==='ArrowLeft'){ lane=Math.max(-1,lane-1); playSound('lane'); }
   if(e.key==='ArrowRight'){ lane=Math.min(1,lane+1); playSound('lane'); }
 
-  if(e.key==='ArrowUp' && !isJumping){
-    velocityY=8;
+  if(e.key==='ArrowUp'&&!isJumping){
+    velocityY=9; // 🔥 stronger jump
     isJumping=true;
     playSound('jump');
   }
@@ -248,15 +241,14 @@ window.startGame=()=>{
   combo=1;
   gameOver=false;
 
-  SPEED = 20 + (LEVEL*2);
+  SPEED=20+(LEVEL*2);
 };
 
-// ========================
-// LOOP
 // ========================
 const clock=new THREE.Clock();
 let coinTimer=0, obstacleTimer=0;
 
+// ========================
 function animate(){
   requestAnimationFrame(animate);
   const delta=clock.getDelta();
@@ -270,24 +262,41 @@ function animate(){
       comboEl.style.opacity=0;
     }
 
-    // physics
-    velocityY -= 20*delta;
+    // 🔥 BETTER GRAVITY (arc)
+    velocityY -= 28*delta;
     y += velocityY*delta;
 
+    // 🔥 LANDING IMPACT
     if(y<=1.5){
+      if(isJumping){
+        landingImpact = 0.25; // trigger bounce
+      }
+
       y=1.5;
       velocityY=0;
       isJumping=false;
+    }
+
+    // smooth landing recovery
+    if(landingImpact>0){
+      landingImpact -= delta*3;
     }
 
     // camera
     bobTime+=delta*10;
     const bob=Math.sin(bobTime)*0.1;
 
-    camera.position.set(lane*2, y+bob, 5);
+    const impactOffset = Math.max(landingImpact,0);
+
+    camera.position.set(
+      lane*2,
+      y + bob - impactOffset,
+      5
+    );
+
     camera.lookAt(camera.position.x,camera.position.y,-20);
 
-    // track loop
+    // track
     let farZ=Infinity;
 
     track.forEach(t=>{
@@ -309,7 +318,6 @@ function animate(){
     }
 
     obstacleTimer+=delta;
-
     let baseRate=1.2-(LEVEL*0.1);
     if(baseRate<0.5) baseRate=0.5;
 
@@ -318,12 +326,11 @@ function animate(){
       obstacleTimer=0;
     }
 
-    // update objects
+    // coins
     coins.forEach((c,i)=>{
       c.lookAt(camera.position);
       c.position.z+=SPEED*delta;
 
-      // collect
       if(Math.abs(c.position.z-camera.position.z)<1 &&
          Math.abs(c.position.x-camera.position.x)<1){
 
@@ -348,23 +355,21 @@ function animate(){
       }
     });
 
-    // collision (FIXED)
+    // obstacles
     obstacles.forEach((o,i)=>{
       o.lookAt(camera.position);
       o.position.z+=SPEED*delta;
 
-      const closeZ = Math.abs(o.position.z - camera.position.z) < 1;
-      const sameLane = Math.abs(o.position.x - camera.position.x) < 1;
+      const closeZ=Math.abs(o.position.z-camera.position.z)<1;
+      const sameLane=Math.abs(o.position.x-camera.position.x)<1;
 
       if(closeZ && sameLane){
-
         const type=o.userData.type;
 
         if(type==='jump' && (!isJumping || y<=1.6)) gameOver=true;
         if(type==='duck' && !isDucking) gameOver=true;
         if(type==='side') gameOver=true;
 
-        // remove after interaction
         scene.remove(o);
         obstacles.splice(i,1);
       }
