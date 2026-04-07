@@ -11,11 +11,10 @@ let LEVEL = 1;
 const scoreEl = document.getElementById('score');
 const menu = document.getElementById('menu');
 
-// 🔊 SOUND (FIXED)
+// SOUND
 const coinSound = new Audio('./assets/sounds/coin.mp3');
-coinSound.volume = 0.5;
+coinSound.volume = 0.4;
 
-// unlock sound (IMPORTANT)
 window.addEventListener('click', () => {
   coinSound.play().then(()=>coinSound.pause()).catch(()=>{});
 }, { once: true });
@@ -39,6 +38,7 @@ const bushTex = loader.load('./assets/textures/bush.png');
 // ========================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 20, 100);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
 
@@ -58,13 +58,15 @@ let isJumping = false, isDucking = false;
 let score = 0, gameOver = true;
 
 // ========================
-// TRACK
+// TRACK + WALLS
 // ========================
 const track = [];
 
 function createTrack(z){
   const g = new THREE.Group();
 
+  // ground
+  groundTex.repeat.set(4,10);
   const ground = new THREE.Mesh(
     new THREE.BoxGeometry(12,0.2,TRACK_LENGTH),
     new THREE.MeshStandardMaterial({ map: groundTex })
@@ -72,6 +74,8 @@ function createTrack(z){
   ground.position.set(0,0,z);
   g.add(ground);
 
+  // rails
+  railTex.repeat.set(1,10);
   [-2,0,2].forEach(x=>{
     const rail = new THREE.Mesh(
       new THREE.BoxGeometry(0.25,0.25,TRACK_LENGTH),
@@ -80,6 +84,31 @@ function createTrack(z){
     rail.position.set(x,0.15,z);
     g.add(rail);
   });
+
+  // ✅ SIDE WALLS (FIXED)
+  [-6,6].forEach(x=>{
+    const wall = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5,2.5,TRACK_LENGTH),
+      new THREE.MeshStandardMaterial({ color: 0x888888 })
+    );
+    wall.position.set(x,1.25,z);
+    g.add(wall);
+  });
+
+  // bushes for depth
+  for(let i=0;i<TRACK_LENGTH;i+=6){
+    const bush = new THREE.Mesh(
+      new THREE.PlaneGeometry(3,3),
+      new THREE.MeshBasicMaterial({ map:bushTex, transparent:true })
+    );
+
+    bush.position.set(-7,1.5,z-i);
+    g.add(bush);
+
+    const bush2 = bush.clone();
+    bush2.position.x = 7;
+    g.add(bush2);
+  }
 
   scene.add(g);
   return g;
@@ -90,27 +119,31 @@ for(let i=0;i<TRACK_COUNT;i++){
 }
 
 // ========================
-// PARTICLES (FIXED)
+// PARTICLES (FIXED PREMIUM)
 // ========================
 const particles = [];
 
-function spawnParticles(x, y, z){
-  for(let i=0;i<12;i++){
+function spawnParticles(x,y,z){
+  for(let i=0;i<6;i++){ // less particles
 
     const p = new THREE.Mesh(
-      new THREE.SphereGeometry(0.15, 8, 8), // bigger
-      new THREE.MeshBasicMaterial({ color: 0xffd700 })
+      new THREE.SphereGeometry(0.05, 6, 6), // 🔥 smaller
+      new THREE.MeshBasicMaterial({
+        color: 0xffd700,
+        transparent: true,
+        opacity: 1
+      })
     );
 
     p.position.set(x,y,z);
 
     p.userData.velocity = {
-      x:(Math.random()-0.5)*6,
-      y:Math.random()*4,
-      z:(Math.random()-0.5)*6
+      x:(Math.random()-0.5)*2,
+      y:Math.random()*2,
+      z:(Math.random()-0.5)*2
     };
 
-    p.userData.life = 1.2;
+    p.userData.life = 0.6;
 
     scene.add(p);
     particles.push(p);
@@ -123,8 +156,7 @@ function spawnParticles(x, y, z){
 const coins = [];
 
 function spawnCoin(){
-
-  const x = (LEVEL===1) ? 0 : [-2,0,2][Math.random()*3|0];
+  const x = (LEVEL===1)?0:[-2,0,2][Math.random()*3|0];
 
   const c = new THREE.Mesh(
     new THREE.PlaneGeometry(0.8,0.8),
@@ -163,7 +195,6 @@ window.addEventListener('keydown', e=>{
 function resetGame(){
   score=0;
   gameOver=false;
-  SPEED=18;
 }
 
 // ========================
@@ -227,23 +258,21 @@ function animate(){
         if(hit){
           c.userData.collected=true;
 
-          // 🔊 SOUND
           coinSound.currentTime=0;
           coinSound.play().catch(()=>{});
 
-          // ✨ PARTICLES
-          spawnParticles(c.position.x, c.position.y, c.position.z);
+          spawnParticles(c.position.x,c.position.y,c.position.z);
 
           score+=10;
         }
       }
 
       if(c.userData.collected){
-        c.userData.scale+=0.2;
+        c.userData.scale+=0.12;
         c.scale.set(c.userData.scale,c.userData.scale,1);
-        c.position.y+=3*delta;
+        c.position.y+=1.5*delta;
 
-        if(c.userData.scale>2.5){
+        if(c.userData.scale>2){
           scene.remove(c);
           coins.splice(i,1);
         }
@@ -255,17 +284,17 @@ function animate(){
       }
     }
 
-    // particles
+    // particles update
     for(let i=particles.length-1;i>=0;i--){
       const p=particles[i];
 
-      p.position.x += p.userData.velocity.x * delta;
-      p.position.y += p.userData.velocity.y * delta;
-      p.position.z += p.userData.velocity.z * delta;
+      p.position.x+=p.userData.velocity.x*delta;
+      p.position.y+=p.userData.velocity.y*delta;
+      p.position.z+=p.userData.velocity.z*delta;
 
-      p.userData.life -= delta;
+      p.material.opacity -= 2*delta; // fade out
 
-      if(p.userData.life <= 0){
+      if(p.material.opacity<=0){
         scene.remove(p);
         particles.splice(i,1);
       }
