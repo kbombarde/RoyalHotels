@@ -4,6 +4,12 @@ body {
   background: black;
 }
 
+/* 🔥 HIT FLASH */
+body.hit {
+  background: red;
+  transition: background 0.1s;
+}
+
 /* MENU */
 #menu {
   position: absolute;
@@ -13,7 +19,7 @@ body {
   z-index: 10;
 }
 
-/* SCORE */
+/* 🎮 SCORE */
 #score {
   position: absolute;
   top: 20px;
@@ -34,7 +40,7 @@ body {
   transition: transform 0.15s;
 }
 
-/* COMBO */
+/* 🔥 COMBO */
 #combo {
   position: absolute;
   top: 80px;
