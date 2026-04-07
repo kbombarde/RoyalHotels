@@ -13,7 +13,7 @@ const comboEl = document.getElementById('combo');
 const menu = document.getElementById('menu');
 
 // ========================
-// SOUND SYSTEM
+// SOUND
 // ========================
 const sounds = {
   coin: new Audio('./assets/sounds/coin.mp3'),
@@ -47,23 +47,22 @@ function playSound(name){
 // ========================
 // TEXTURES
 // ========================
-const loader = new THREE.TextureLoader();
+const loader=new THREE.TextureLoader();
 
-const groundTex = loader.load('./assets/textures/ground.png');
-const railTex = loader.load('./assets/textures/rail.png');
-const coinTex = loader.load('./assets/textures/coin.png');
-const barricadeTex = loader.load('./assets/textures/barricade.png');
-const barTex = loader.load('./assets/textures/bar.png');
-const barrelTex = loader.load('./assets/textures/barrel.png');
+const groundTex=loader.load('./assets/textures/ground.png');
+const railTex=loader.load('./assets/textures/rail.png');
+const coinTex=loader.load('./assets/textures/coin.png');
+const barricadeTex=loader.load('./assets/textures/barricade.png');
+const barTex=loader.load('./assets/textures/bar.png');
+const barrelTex=loader.load('./assets/textures/barrel.png');
 
-[groundTex, railTex].forEach(t=>{
+[groundTex,railTex].forEach(t=>{
   t.wrapS=t.wrapT=THREE.RepeatWrapping;
 });
 
 // ========================
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x87ceeb);
-scene.fog=new THREE.Fog(0x87ceeb,10,120);
 
 const camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,1000);
 
@@ -76,20 +75,14 @@ renderer.setSize(window.innerWidth,window.innerHeight);
 scene.add(new THREE.AmbientLight(0xffffff,0.8));
 
 // ========================
-// PLAYER
-// ========================
 let lane=0,y=1.5,velocityY=0;
 let isJumping=false,isDucking=false;
 
 let score=0,gameOver=true;
 let bobTime=0;
 
-// 🔥 COMBO SYSTEM
-let combo=1;
-let comboTimer=0;
+let combo=1,comboTimer=0;
 
-// ========================
-// TRACK
 // ========================
 const track=[];
 
@@ -112,15 +105,6 @@ function createTrack(z){
     g.add(rail);
   });
 
-  [-6,6].forEach(x=>{
-    const wall=new THREE.Mesh(
-      new THREE.BoxGeometry(1.5,2.5,TRACK_LENGTH),
-      new THREE.MeshStandardMaterial({color:0x888888})
-    );
-    wall.position.set(x,1.25,z);
-    g.add(wall);
-  });
-
   scene.add(g);
   return g;
 }
@@ -130,35 +114,11 @@ for(let i=0;i<TRACK_COUNT;i++){
 }
 
 // ========================
-// PARTICLES
-// ========================
+const coins=[];
+const obstacles=[];
 const particles=[];
 
-function spawnParticles(x,y,z){
-  for(let i=0;i<5;i++){
-    const p=new THREE.Mesh(
-      new THREE.SphereGeometry(0.04,6,6),
-      new THREE.MeshBasicMaterial({color:0xffd700,transparent:true,opacity:0.9})
-    );
-
-    p.position.set(x,y,z);
-
-    p.userData.velocity={
-      x:(Math.random()-0.5)*1.5,
-      y:Math.random()*1.5,
-      z:(Math.random()-0.5)*1.5
-    };
-
-    scene.add(p);
-    particles.push(p);
-  }
-}
-
 // ========================
-// COINS
-// ========================
-const coins=[];
-
 function spawnCoin(){
   const x=(LEVEL===1)?0:[-2,0,2][Math.random()*3|0];
 
@@ -169,25 +129,45 @@ function spawnCoin(){
 
   c.position.set(x,1.5,-60);
   c.userData.collected=false;
-  c.userData.scale=1;
 
   scene.add(c);
   coins.push(c);
 }
 
 // ========================
-// OBSTACLES (LEVEL 1-6)
-// ========================
-const obstacles=[];
-
 function spawnObstacle(){
+
   if(LEVEL===1) return;
 
+  if(LEVEL===2){
+    [-2,0,2].forEach(x=>createObstacle(x,'jump'));
+    return;
+  }
+
+  if(LEVEL===3){
+    if(Math.random()<0.7){
+      [-2,0,2].forEach(x=>createObstacle(x,'duck'));
+    } else {
+      createObstacle(0,'jump');
+    }
+    return;
+  }
+
+  if(LEVEL===4){
+    const lanes=[-2,0,2];
+    const open=Math.floor(Math.random()*3);
+
+    lanes.forEach((x,i)=>{
+      if(i!==open) createObstacle(x,'side');
+    });
+    return;
+  }
+
   const types=['jump','duck','side'];
-  const x=[-2,0,2][Math.random()*3|0];
-  createObstacle(x,types[Math.random()*3|0]);
+  createObstacle([-2,0,2][Math.random()*3|0],types[Math.random()*3|0]);
 }
 
+// ========================
 function createObstacle(x,type){
 
   let mesh;
@@ -223,8 +203,6 @@ function createObstacle(x,type){
 }
 
 // ========================
-// CONTROLS
-// ========================
 window.addEventListener('keydown',e=>{
   unlockAudio();
 
@@ -247,24 +225,17 @@ window.addEventListener('keydown',e=>{
 });
 
 // ========================
-function resetGame(){
+window.startGame=()=>{
+  LEVEL=parseInt(document.getElementById('level').value);
+  menu.style.display='none';
+
   score=0;
   combo=1;
   gameOver=false;
 
-  if(LEVEL===5) SPEED=25;
-  if(LEVEL===6) SPEED=28;
-}
-
-// ========================
-window.startGame=()=>{
-  LEVEL=parseInt(document.getElementById('level').value);
-  menu.style.display='none';
-  resetGame();
+  SPEED = 20 + (LEVEL*2);
 };
 
-// ========================
-// LOOP
 // ========================
 const clock=new THREE.Clock();
 let coinTimer=0, obstacleTimer=0;
@@ -293,90 +264,81 @@ function animate(){
     bobTime+=delta*10;
     const bob=Math.sin(bobTime)*0.1;
 
-    const targetX=lane*2;
-
-    camera.position.x+=(targetX-camera.position.x)*0.2;
-    camera.position.y=(isDucking?1:y)+bob;
+    camera.position.x+=(lane*2-camera.position.x)*0.2;
+    camera.position.y=y+bob;
     camera.position.z=5;
 
-    camera.lookAt(camera.position.x,camera.position.y-0.2,-20);
+    camera.lookAt(camera.position.x,camera.position.y,-20);
 
-    let farthestZ=Infinity;
+    let farZ=Infinity;
 
     for(const t of track){
       t.position.z+=SPEED*delta;
-      if(t.position.z<farthestZ) farthestZ=t.position.z;
+      if(t.position.z<farZ) farZ=t.position.z;
     }
 
     for(const t of track){
       if(t.position.z>TRACK_LENGTH){
-        t.position.z=farthestZ-TRACK_LENGTH;
+        t.position.z=farZ-TRACK_LENGTH;
       }
     }
 
-    // spawn coins
+    // coins
     coinTimer+=delta;
     if(coinTimer>0.6){
       spawnCoin();
       coinTimer=0;
     }
 
-    // spawn obstacles
+    // obstacles
     obstacleTimer+=delta;
 
-    let baseRate=1.2;
-    if(LEVEL===3) baseRate=0.9;
-    if(LEVEL===4) baseRate=0.75;
-    if(LEVEL===5) baseRate=0.65;
-    if(LEVEL>=6) baseRate=0.55;
+    let baseRate=1.2-(LEVEL*0.1);
+    if(baseRate<0.5) baseRate=0.5;
 
     if(obstacleTimer>baseRate){
       spawnObstacle();
       obstacleTimer=0;
     }
 
+    // update objects
+    [...coins,...obstacles].forEach(obj=>{
+      obj.lookAt(camera.position);
+      obj.position.z+=SPEED*delta;
+    });
+
+    // collision
+    obstacles.forEach(o=>{
+      const hit=Math.abs(o.position.z-camera.position.z)<1 &&
+                 Math.abs(o.position.x-camera.position.x)<1;
+
+      if(hit){
+        if(o.userData.type==='jump' && (!isJumping||y<=1.6)) gameOver=true;
+        if(o.userData.type==='duck' && !isDucking) gameOver=true;
+        if(o.userData.type==='side') gameOver=true;
+      }
+    });
+
     // coins
-    for(let i=coins.length-1;i>=0;i--){
-      const c=coins[i];
+    coins.forEach(c=>{
+      const hit=Math.abs(c.position.z-camera.position.z)<1 &&
+                 Math.abs(c.position.x-camera.position.x)<1;
 
-      c.lookAt(camera.position);
-      c.position.z+=SPEED*delta;
+      if(hit && !c.userData.collected){
+        c.userData.collected=true;
 
-      if(!c.userData.collected){
-        const hit=Math.abs(c.position.z-camera.position.z)<1 &&
-                  Math.abs(c.position.x-camera.position.x)<1;
+        playSound('coin');
 
-        if(hit){
-          c.userData.collected=true;
+        combo=Math.min(combo+1,5);
+        comboTimer=2;
 
-          playSound('coin');
-          spawnParticles(c.position.x,c.position.y,c.position.z);
+        score+=10*combo;
+        scoreEl.innerText=score;
 
-          combo++;
-          combo=Math.min(combo,5);
-          comboTimer=2;
-
-          score+=10*combo;
-          scoreEl.innerText=score;
-
-          scoreEl.style.transform='translateX(-50%) scale(1.2)';
-          setTimeout(()=>scoreEl.style.transform='translateX(-50%) scale(1)',100);
-
-          comboEl.innerText='x'+combo;
-          comboEl.style.opacity=1;
-        }
+        comboEl.innerText='x'+combo;
+        comboEl.style.opacity=1;
       }
-
-      if(c.userData.collected){
-        c.scale.setScalar(c.scale.x+0.1);
-        c.position.y+=1.5*delta;
-
-        if(c.scale.x>2){
-          scene.remove(c);
-          coins.splice(i,1);
-        }
-      }
-    }
+    });
   }
 
   renderer.render(scene,camera);
