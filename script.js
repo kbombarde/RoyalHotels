@@ -181,15 +181,11 @@ function spawnObstacle(){
 
   if(LEVEL===1) return;
 
-  // LEVEL 2 → jump
   if(LEVEL===2){
-    [-2,0,2].forEach(x=>{
-      createObstacle(x,'jump');
-    });
+    [-2,0,2].forEach(x=>createObstacle(x,'jump'));
     return;
   }
 
-  // LEVEL 3 → duck + jump
   if(LEVEL===3){
     if(Math.random()<0.7){
       [-2,0,2].forEach(x=>createObstacle(x,'duck'));
@@ -199,35 +195,24 @@ function spawnObstacle(){
     return;
   }
 
-  // ========================
-  // 🔥 LEVEL 4
-  // ========================
   if(LEVEL===4){
+    const r=Math.random();
 
-    const r = Math.random();
-
-    // 60% lane switching
-    if(r < 0.6){
+    if(r<0.6){
       const lanes=[-2,0,2];
-      const openIndex=Math.floor(Math.random()*3);
-
-      lanes.forEach((x,i)=>{
-        if(i!==openIndex){
-          createObstacle(x,'side');
-        }
-      });
+      const open=Math.floor(Math.random()*3);
+      lanes.forEach((x,i)=>{ if(i!==open) createObstacle(x,'side'); });
     }
-    // 20% jump
-    else if(r < 0.8){
-      createObstacle(0,'jump');
-    }
-    // 20% duck
-    else{
-      [-2,0,2].forEach(x=>createObstacle(x,'duck'));
-    }
+    else if(r<0.8) createObstacle(0,'jump');
+    else [-2,0,2].forEach(x=>createObstacle(x,'duck'));
 
     return;
   }
+
+  // 🔥 LEVEL 5 & 6 → FULL RANDOM MIX
+  const types=['jump','duck','side'];
+  const x=[-2,0,2][Math.random()*3|0];
+  createObstacle(x,types[Math.random()*3|0]);
 }
 
 function createObstacle(x,type){
@@ -272,15 +257,8 @@ window.addEventListener('keydown',e=>{
 
   if(gameOver) return;
 
-  if(e.key==='ArrowLeft'){
-    lane=Math.max(-1,lane-1);
-    playSound('lane');
-  }
-
-  if(e.key==='ArrowRight'){
-    lane=Math.min(1,lane+1);
-    playSound('lane');
-  }
+  if(e.key==='ArrowLeft'){ lane=Math.max(-1,lane-1); playSound('lane'); }
+  if(e.key==='ArrowRight'){ lane=Math.min(1,lane+1); playSound('lane'); }
 
   if(e.key==='ArrowUp'&&!isJumping){
     velocityY=8;
@@ -301,7 +279,8 @@ function resetGame(){
   gameOver=false;
 
   if(LEVEL===4) SPEED=22;
-  else SPEED=20;
+  if(LEVEL===5) SPEED=25;
+  if(LEVEL===6) SPEED=28;
 }
 
 // ========================
@@ -344,7 +323,6 @@ function animate(){
     camera.lookAt(camera.position.x,camera.position.y-0.2,-20);
     camera.rotation.z=-lane*0.05;
 
-    // track
     let farthestZ=Infinity;
 
     for(const t of track){
@@ -358,7 +336,6 @@ function animate(){
       }
     }
 
-    // spawn
     coinTimer+=delta;
     if(coinTimer>0.6){
       spawnCoin();
@@ -366,7 +343,9 @@ function animate(){
     }
 
     obstacleTimer+=delta;
-    if(obstacleTimer>1.2){
+    const spawnRate = (LEVEL>=6) ? 0.8 : 1.2;
+
+    if(obstacleTimer>spawnRate){
       spawnObstacle();
       obstacleTimer=0;
     }
