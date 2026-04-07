@@ -148,7 +148,7 @@ function spawnCoin(){
 }
 
 // ========================
-// OBSTACLES (NEW LEVEL LOGIC)
+// OBSTACLES (FINAL)
 // ========================
 const obstacles = [];
 
@@ -156,16 +156,59 @@ function spawnObstacle(){
 
   if(LEVEL === 1) return;
 
+  // LEVEL 2 → FORCE JUMP
+  if(LEVEL === 2){
+    [-2,0,2].forEach(x=>{
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(2,1.5),
+        new THREE.MeshBasicMaterial({ map:barricadeTex, transparent:true })
+      );
+      mesh.position.set(x,1,-60);
+      mesh.userData.type='jump';
+
+      scene.add(mesh);
+      obstacles.push(mesh);
+    });
+    return;
+  }
+
+  // LEVEL 3 → DUCK + OCCASIONAL JUMP
+  if(LEVEL === 3){
+
+    if(Math.random() < 0.7){
+      // full duck
+      [-2,0,2].forEach(x=>{
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.5,1),
+          new THREE.MeshBasicMaterial({ map:barTex, transparent:true })
+        );
+        mesh.position.set(x,2,-60);
+        mesh.userData.type='duck';
+
+        scene.add(mesh);
+        obstacles.push(mesh);
+      });
+
+    } else {
+      // jump only center
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(2,1.5),
+        new THREE.MeshBasicMaterial({ map:barricadeTex, transparent:true })
+      );
+
+      mesh.position.set(0,1,-60);
+      mesh.userData.type='jump';
+
+      scene.add(mesh);
+      obstacles.push(mesh);
+    }
+
+    return;
+  }
+
+  // OTHER LEVELS
+  let type = ['jump','duck','side'][Math.random()*3|0];
   const x = [-2,0,2][Math.random()*3|0];
-  let type;
-
-  if(LEVEL === 2) type = 'jump';
-
-  else if(LEVEL === 3)
-    type = Math.random() < 0.5 ? 'jump' : 'duck';
-
-  else
-    type = ['jump','duck','side'][Math.random()*3|0];
 
   let mesh;
 
@@ -220,17 +263,13 @@ window.addEventListener('keydown', e=>{
 });
 
 // ========================
-// RESET (UPDATED SPEED)
+// RESET
 // ========================
 function resetGame(){
   score=0;
   gameOver=false;
 
-  SPEED = 18;
-
-  if(LEVEL === 4) SPEED *= 1.1;
-  if(LEVEL === 5) SPEED *= 1.25;
-  if(LEVEL === 6) SPEED *= 1.4;
+  SPEED=18;
 }
 
 // ========================
@@ -315,8 +354,31 @@ function animate(){
       }
     }
 
-    renderer.render(scene,camera);
+    // coins
+    for(let i=coins.length-1;i>=0;i--){
+      const c=coins[i];
+
+      c.lookAt(camera.position);
+      c.position.z+=SPEED*delta;
+
+      const collected =
+        Math.abs(c.position.z-camera.position.z)<1 &&
+        Math.abs(c.position.x-camera.position.x)<1;
+
+      if(collected){
+        scene.remove(c);
+        coins.splice(i,1);
+        score+=10;
+      }
+
+      if(c.position.z>10){
+        scene.remove(c);
+        coins.splice(i,1);
+      }
+    }
   }
+
+  renderer.render(scene,camera);
 }
 
 function endGame(){
