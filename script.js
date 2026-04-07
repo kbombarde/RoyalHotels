@@ -157,12 +157,10 @@ const obstacles = [];
 
 function spawnObstacle(){
 
-  // LEVEL 1 → no obstacles
+  // LEVEL 1
   if(LEVEL === 1) return;
 
-  // =========================
-  // LEVEL 2 → FORCE JUMP
-  // =========================
+  // LEVEL 2 → JUMP ONLY
   if(LEVEL === 2){
     [-2,0,2].forEach(x=>{
       const mesh = new THREE.Mesh(
@@ -178,13 +176,26 @@ function spawnObstacle(){
     return;
   }
 
-  // =========================
+  // LEVEL 3 → DUCK ONLY
+  if(LEVEL === 3){
+    [-2,0,2].forEach(x=>{
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.5,1),
+        new THREE.MeshBasicMaterial({ map:barTex, transparent:true })
+      );
+      mesh.position.set(x,2,-60);
+      mesh.userData.type = 'duck';
+
+      scene.add(mesh);
+      obstacles.push(mesh);
+    });
+    return;
+  }
+
   // OTHER LEVELS
-  // =========================
   let type;
 
-  if(LEVEL===3) type='duck';
-  else if(LEVEL===4) type='side';
+  if(LEVEL===4) type='side';
   else type=['jump','duck','side'][Math.random()*3|0];
 
   const x = [-2,0,2][Math.random()*3|0];
@@ -318,7 +329,7 @@ function animate(){
       o.lookAt(camera.position);
       o.position.z+=SPEED*delta;
 
-      const hit=
+      const hit =
         Math.abs(o.position.z-camera.position.z)<1 &&
         Math.abs(o.position.x-camera.position.x)<1;
 
@@ -343,7 +354,7 @@ function animate(){
       c.lookAt(camera.position);
       c.position.z+=SPEED*delta;
 
-      const collected=
+      const collected =
         Math.abs(c.position.z-camera.position.z)<1 &&
         Math.abs(c.position.x-camera.position.x)<1;
 
