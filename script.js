@@ -44,18 +44,29 @@ function playSound(name){
 // ========================
 const loader = new THREE.TextureLoader();
 
-const groundTex = loader.load('./assets/textures/ground.png');
-const railTex = loader.load('./assets/textures/rail.png');
+const roadTex = loader.load('./assets/textures/city/road.png');
+const buildingTex = loader.load('./assets/textures/city/building.png');
+const sidewalkTex = loader.load('./assets/textures/city/sidewalk.png');
+const carTex = loader.load('./assets/textures/city/car.png');
+const poleTex = loader.load('./assets/textures/city/pole.png');
+
 const coinTex = loader.load('./assets/textures/coin.png');
 const barricadeTex = loader.load('./assets/textures/barricade.png');
 const barTex = loader.load('./assets/textures/bar.png');
 const barrelTex = loader.load('./assets/textures/barrel.png');
 
+[roadTex, buildingTex, sidewalkTex].forEach(t=>{
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+});
+
+// ========================
+// SCENE 🌙 NIGHT MODE
 // ========================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 20, 150);
+scene.background = new THREE.Color(0x0a0f1f);
+scene.fog = new THREE.Fog(0x0a0f1f, 20, 150);
 
+// ========================
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
 
 const renderer = new THREE.WebGLRenderer({
@@ -65,13 +76,13 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setSize(innerWidth, innerHeight);
 
 // ========================
-// LIGHTING
+// LIGHTING (NIGHT)
 // ========================
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+scene.add(new THREE.AmbientLight(0x222244, 0.8));
 
-const light = new THREE.DirectionalLight(0xffffff, 0.7);
-light.position.set(5,10,5);
-scene.add(light);
+const moonLight = new THREE.DirectionalLight(0x8899ff, 0.6);
+moonLight.position.set(5,10,5);
+scene.add(moonLight);
 
 // ========================
 // PLAYER
@@ -92,7 +103,7 @@ let bobTime = 0;
 let landingImpact = 0;
 
 // ========================
-// TRACK + CITY ENVIRONMENT
+// TRACK + CITY
 // ========================
 const track = [];
 
@@ -100,75 +111,90 @@ function createTrack(z){
   const g = new THREE.Group();
 
   // ROAD
+  roadTex.repeat.set(1,4);
+
   const road = new THREE.Mesh(
     new THREE.BoxGeometry(12,0.2,TRACK_LENGTH),
-    new THREE.MeshStandardMaterial({color:0x333333})
+    new THREE.MeshStandardMaterial({map:roadTex})
   );
   road.position.set(0,0,z);
   g.add(road);
 
-  // LANE MARKERS
+  // LANE LINES
   [-2,0,2].forEach(x=>{
-    const rail = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2,0.05,TRACK_LENGTH),
-      new THREE.MeshStandardMaterial({color:0xffffff})
+    const line = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15,0.05,TRACK_LENGTH),
+      new THREE.MeshBasicMaterial({color:0xffffff})
     );
-    rail.position.set(x,0.11,z);
-    g.add(rail);
+    line.position.set(x,0.11,z);
+    g.add(line);
   });
 
-  // SIDEWALKS
+  // SIDEWALK
+  sidewalkTex.repeat.set(1,4);
+
   [-6,6].forEach(x=>{
     const sidewalk = new THREE.Mesh(
       new THREE.BoxGeometry(2,0.2,TRACK_LENGTH),
-      new THREE.MeshStandardMaterial({color:0x777777})
+      new THREE.MeshStandardMaterial({map:sidewalkTex})
     );
     sidewalk.position.set(x,0,z);
     g.add(sidewalk);
   });
 
-  // 🏢 BUILDINGS
+  // 🏢 BUILDINGS WITH GLOW WINDOWS
   for(let i=0;i<4;i++){
-    const height = 3 + Math.random()*5;
+    const h = 4 + Math.random()*6;
 
-    const building = new THREE.Mesh(
-      new THREE.BoxGeometry(2,height,2),
-      new THREE.MeshStandardMaterial({color:0x888888})
+    const mat = new THREE.MeshStandardMaterial({
+      map: buildingTex,
+      emissive: new THREE.Color(0xffffcc),
+      emissiveIntensity: 0.4
+    });
+
+    const b = new THREE.Mesh(
+      new THREE.BoxGeometry(2,h,2),
+      mat
     );
 
-    building.position.set(
-      (Math.random()<0.5 ? -9 : 9),
-      height/2,
+    b.position.set(
+      Math.random()<0.5 ? -9 : 9,
+      h/2,
       z + (Math.random()*TRACK_LENGTH - TRACK_LENGTH/2)
     );
 
-    g.add(building);
+    g.add(b);
   }
 
-  // 💡 STREET LIGHTS
+  // 💡 STREET LIGHTS (GLOW)
   for(let i=0;i<2;i++){
     const pole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.05,0.05,3),
-      new THREE.MeshStandardMaterial({color:0xaaaaaa})
+      new THREE.MeshStandardMaterial({map:poleTex})
     );
 
-    const lightBulb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.15,6,6),
+    const light = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2,6,6),
       new THREE.MeshBasicMaterial({color:0xffffaa})
     );
 
-    pole.position.set(-5,1.5,z + (i*TRACK_LENGTH/2 - TRACK_LENGTH/4));
-    lightBulb.position.y = 1.5;
+    const glow = new THREE.PointLight(0xffffaa, 1, 10);
 
-    pole.add(lightBulb);
+    pole.position.set(-5,1.5,z + (i*TRACK_LENGTH/2 - TRACK_LENGTH/4));
+    light.position.y = 1.5;
+    glow.position.y = 1.5;
+
+    pole.add(light);
+    pole.add(glow);
+
     g.add(pole);
   }
 
-  // 🚗 PARKED CARS
+  // 🚗 CARS
   for(let i=0;i<2;i++){
     const car = new THREE.Mesh(
       new THREE.BoxGeometry(1.5,0.7,3),
-      new THREE.MeshStandardMaterial({color:0xff4444})
+      new THREE.MeshStandardMaterial({map:carTex})
     );
 
     car.position.set(
@@ -188,8 +214,6 @@ for(let i=0;i<TRACK_COUNT;i++){
   track.push(createTrack(-i*TRACK_LENGTH));
 }
 
-// ========================
-// OBJECTS
 // ========================
 const coins = [];
 const obstacles = [];
