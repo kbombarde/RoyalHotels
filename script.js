@@ -73,7 +73,7 @@ let isJumping = false, isDucking = false;
 let score = 0, gameOver = true;
 
 // ========================
-// TRACK + PROPS
+// TRACK
 // ========================
 const track = [];
 
@@ -115,15 +115,6 @@ function createTrack(z){
     g.add(rail);
   });
 
-  [-6,6].forEach(x=>{
-    const wall = new THREE.Mesh(
-      new THREE.BoxGeometry(1,1,TRACK_LENGTH),
-      new THREE.MeshStandardMaterial({ color: 0xff5533 })
-    );
-    wall.position.set(x,0.5,z);
-    g.add(wall);
-  });
-
   addSideProps(g,z);
   scene.add(g);
   return g;
@@ -134,13 +125,39 @@ for(let i=0;i<TRACK_COUNT;i++){
 }
 
 // ========================
+// PARTICLES ✨
+// ========================
+const particles = [];
+
+function spawnParticles(x, y, z){
+  for(let i=0;i<8;i++){
+    const p = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffd700 })
+    );
+
+    p.position.set(x,y,z);
+
+    p.userData.velocity = {
+      x:(Math.random()-0.5)*4,
+      y:Math.random()*3,
+      z:(Math.random()-0.5)*4
+    };
+
+    p.userData.life = 1;
+
+    scene.add(p);
+    particles.push(p);
+  }
+}
+
+// ========================
 // COINS
 // ========================
 const coins = [];
 
 function spawnCoin(){
-
-  const x = (LEVEL === 1) ? 0 : [-2,0,2][Math.random()*3|0];
+  const x = (LEVEL===1) ? 0 : [-2,0,2][Math.random()*3|0];
 
   const c = new THREE.Mesh(
     new THREE.PlaneGeometry(0.8,0.8),
@@ -148,22 +165,22 @@ function spawnCoin(){
   );
 
   c.position.set(x,1.5,-60);
-  c.userData.collected = false;
-  c.userData.scale = 1;
+  c.userData.collected=false;
+  c.userData.scale=1;
 
   scene.add(c);
   coins.push(c);
 }
 
 // ========================
-// OBSTACLES (same as before)
+// OBSTACLES (basic)
 // ========================
 const obstacles = [];
 
 function spawnObstacle(){
-  if(LEVEL === 1) return;
+  if(LEVEL===1) return;
 
-  let type = ['jump','duck','side'][Math.random()*3|0];
+  const type = ['jump','duck','side'][Math.random()*3|0];
   const x = [-2,0,2][Math.random()*3|0];
 
   let mesh;
@@ -259,6 +276,7 @@ function animate(){
 
     camera.lookAt(camera.position.x,camera.position.y,-25);
 
+    // TRACK LOOP
     let farthestZ=Infinity;
 
     for(const t of track){
@@ -272,6 +290,7 @@ function animate(){
       }
     }
 
+    // SPAWN
     spawnTimer+=delta;
     if(spawnTimer>1){
       spawnObstacle();
@@ -284,7 +303,7 @@ function animate(){
       coinTimer=0;
     }
 
-    // COINS WITH ANIMATION
+    // COINS
     for(let i=coins.length-1;i>=0;i--){
       const c=coins[i];
 
@@ -297,23 +316,23 @@ function animate(){
           Math.abs(c.position.x-camera.position.x)<1;
 
         if(hit){
-          c.userData.collected = true;
+          c.userData.collected=true;
 
-          // 🔊 PLAY SOUND
-          coinSound.currentTime = 0;
+          coinSound.currentTime=0;
           coinSound.play();
+
+          spawnParticles(c.position.x, c.position.y, c.position.z);
 
           score+=10;
         }
       }
 
-      // ✨ ANIMATION
       if(c.userData.collected){
-        c.userData.scale += 0.1;
-        c.scale.set(c.userData.scale, c.userData.scale, 1);
-        c.position.y += 2 * delta;
+        c.userData.scale+=0.15;
+        c.scale.set(c.userData.scale,c.userData.scale,1);
+        c.position.y+=2*delta;
 
-        if(c.userData.scale > 2){
+        if(c.userData.scale>2){
           scene.remove(c);
           coins.splice(i,1);
         }
@@ -322,6 +341,22 @@ function animate(){
       if(c.position.z>10){
         scene.remove(c);
         coins.splice(i,1);
+      }
+    }
+
+    // PARTICLES
+    for(let i=particles.length-1;i>=0;i--){
+      const p=particles[i];
+
+      p.position.x += p.userData.velocity.x * delta;
+      p.position.y += p.userData.velocity.y * delta;
+      p.position.z += p.userData.velocity.z * delta;
+
+      p.userData.life -= delta;
+
+      if(p.userData.life <= 0){
+        scene.remove(p);
+        particles.splice(i,1);
       }
     }
   }
