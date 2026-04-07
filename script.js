@@ -51,19 +51,39 @@ const barricadeTex=loader.load('./assets/textures/barricade.png');
 const barTex=loader.load('./assets/textures/bar.png');
 const barrelTex=loader.load('./assets/textures/barrel.png');
 
+[groundTex,railTex].forEach(t=>{
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+});
+
+// ========================
+// SCENE + FOG 🌫️
 // ========================
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,15,120);
 
+// ========================
+// CAMERA
+// ========================
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
 
+// ========================
+// RENDERER
+// ========================
 const renderer=new THREE.WebGLRenderer({
   canvas:document.getElementById('game'),
   antialias:true
 });
 renderer.setSize(innerWidth,innerHeight);
 
-scene.add(new THREE.AmbientLight(0xffffff,0.8));
+// ========================
+// LIGHTING 💡
+// ========================
+scene.add(new THREE.AmbientLight(0xffffff,0.6));
+
+const dirLight=new THREE.DirectionalLight(0xffffff,0.8);
+dirLight.position.set(5,10,5);
+scene.add(dirLight);
 
 // ========================
 let lane=0,y=1.5,velocityY=0;
@@ -112,24 +132,16 @@ for(let i=0;i<TRACK_COUNT;i++){
 // ========================
 const coins=[];
 const obstacles=[];
-const particles=[];
 
 // ========================
-// COINS (✨ glow + trail)
+// COINS (CLEAN)
 // ========================
 function spawnCoin(){
   const x=(LEVEL===1)?0:[-2,0,2][Math.random()*3|0];
 
-  const mat=new THREE.MeshBasicMaterial({
-    map:coinTex,
-    transparent:true,
-    emissive:new THREE.Color(0xffd700),
-    emissiveIntensity:0.5
-  });
-
   const c=new THREE.Mesh(
     new THREE.PlaneGeometry(0.8,0.8),
-    mat
+    new THREE.MeshBasicMaterial({map:coinTex,transparent:true})
   );
 
   c.position.set(x,1.5,-60);
@@ -140,34 +152,26 @@ function spawnCoin(){
 }
 
 // ========================
-// PARTICLES (💫 subtle)
+// PARTICLE BURST (ONLY ON COLLECT)
 // ========================
-function spawnParticles(x,y,z){
-  for(let i=0;i<4;i++){
+function burst(x,y,z){
+  for(let i=0;i<3;i++){
     const p=new THREE.Mesh(
       new THREE.SphereGeometry(0.03,4,4),
-      new THREE.MeshBasicMaterial({
-        color:0xffd700,
-        transparent:true,
-        opacity:0.8
-      })
+      new THREE.MeshBasicMaterial({color:0xffd700})
     );
-
     p.position.set(x,y,z);
-    p.userData.life=0.5;
-    p.userData.vel={
-      x:(Math.random()-0.5)*0.5,
-      y:Math.random()*0.8,
-      z:(Math.random()-0.5)*0.5
-    };
+    p.userData.life=0.3;
+    p.userData.vel=(Math.random()-0.5)*0.5;
 
     scene.add(p);
-    particles.push(p);
+
+    setTimeout(()=>scene.remove(p),300);
   }
 }
 
 // ========================
-// OBSTACLES (same logic)
+// OBSTACLES (LEVEL LOGIC RETAINED)
 // ========================
 function spawnObstacle(){
 
@@ -305,7 +309,7 @@ function animate(){
     camera.position.set(lane*2+shakeX,y+bob+shakeY,5);
     camera.lookAt(camera.position.x,camera.position.y,-20);
 
-    // track
+    // TRACK LOOP
     let farZ=Infinity;
     track.forEach(t=>{
       t.position.z+=SPEED*delta;
@@ -317,38 +321,37 @@ function animate(){
       }
     });
 
-    // spawn coins
+    // COINS
     coinTimer+=delta;
     if(coinTimer>0.6){
       spawnCoin();
       coinTimer=0;
     }
 
-    // spawn obstacles
+    // OBSTACLES
     obstacleTimer+=delta;
     if(obstacleTimer>0.7){
       spawnObstacle();
       obstacleTimer=0;
     }
 
-    // update objects
+    // UPDATE OBJECTS
     [...coins,...obstacles].forEach(obj=>{
       obj.lookAt(camera.position);
       obj.position.z+=SPEED*delta;
     });
 
-    // coin trail + collect
-    coins.forEach(c=>{
-      spawnParticles(c.position.x,c.position.y,c.position.z);
-
+    // COIN COLLISION
+    coins.forEach((c,i)=>{
       const hit=Math.abs(c.position.z-camera.position.z)<1 &&
                  Math.abs(c.position.x-camera.position.x)<1;
 
-      if(hit && !c.userData.collected){
-        c.userData.collected=true;
+      if(hit){
+        scene.remove(c);
+        coins.splice(i,1);
 
         playSound('coin');
-        spawnParticles(c.position.x,c.position.y,c.position.z);
+        burst(c.position.x,c.position.y,c.position.z);
 
         combo=Math.min(combo+1,5);
         comboTimer=2;
@@ -361,24 +364,7 @@ function animate(){
       }
     });
 
-    // particles update
-    for(let i=particles.length-1;i>=0;i--){
-      const p=particles[i];
-
-      p.position.x+=p.userData.vel.x;
-      p.position.y+=p.userData.vel.y;
-      p.position.z+=p.userData.vel.z;
-
-      p.material.opacity-=delta*2;
-      p.userData.life-=delta;
-
-      if(p.userData.life<=0){
-        scene.remove(p);
-        particles.splice(i,1);
-      }
-    }
-
-    // collision
+    // OBSTACLE COLLISION
     obstacles.forEach(o=>{
       const hit=Math.abs(o.position.z-camera.position.z)<1 &&
                  Math.abs(o.position.x-camera.position.x)<1;
