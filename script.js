@@ -4,7 +4,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.mod
 const TRACK_LENGTH = 30;
 const TRACK_COUNT = 10;
 
-let SPEED = 18;
+let SPEED = 20;
 let LEVEL = 1;
 
 // UI
@@ -27,7 +27,6 @@ const loader = new THREE.TextureLoader();
 const groundTex = loader.load('./assets/textures/ground.png');
 const railTex = loader.load('./assets/textures/rail.png');
 const coinTex = loader.load('./assets/textures/coin.png');
-const bushTex = loader.load('./assets/textures/bush.png');
 
 [groundTex, railTex].forEach(t => {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -38,7 +37,7 @@ const bushTex = loader.load('./assets/textures/bush.png');
 // ========================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 20, 150);
+scene.fog = new THREE.Fog(0x87ceeb, 10, 120);
 
 // ========================
 // CAMERA
@@ -51,7 +50,7 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 // ========================
-// RENDERER (SHADOW ENABLED)
+// RENDERER
 // ========================
 const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById('game'),
@@ -60,36 +59,33 @@ const renderer = new THREE.WebGLRenderer({
 
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 // ========================
-// LIGHTING 🌞
+// LIGHT
 // ========================
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
-// ambient
-const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-scene.add(ambient);
-
-// hemisphere (sky light)
-const hemi = new THREE.HemisphereLight(0x87ceeb, 0x444444, 0.6);
-scene.add(hemi);
-
-// sun
 const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-sun.position.set(10, 20, 10);
-sun.castShadow = true;
-
-sun.shadow.mapSize.width = 1024;
-sun.shadow.mapSize.height = 1024;
-
+sun.position.set(10,20,10);
 scene.add(sun);
 
 // ========================
-// PLAYER
+// PLAYER STATE
 // ========================
-let lane = 0, y = 1.5, velocityY = 0;
-let isJumping = false, isDucking = false;
-let score = 0, gameOver = true;
+let lane = 0;
+let y = 1.5;
+let velocityY = 0;
+
+let isJumping = false;
+let isDucking = false;
+
+let score = 0;
+let gameOver = true;
+
+// ========================
+// CAMERA EFFECTS
+// ========================
+let bobTime = 0;
 
 // ========================
 // TRACK
@@ -106,7 +102,6 @@ function createTrack(z){
     new THREE.MeshStandardMaterial({ map: groundTex })
   );
   ground.position.set(0,0,z);
-  ground.receiveShadow = true;
   g.add(ground);
 
   railTex.repeat.set(1,10);
@@ -117,7 +112,6 @@ function createTrack(z){
       new THREE.MeshStandardMaterial({ map: railTex })
     );
     rail.position.set(x,0.15,z);
-    rail.castShadow = true;
     g.add(rail);
   });
 
@@ -128,7 +122,6 @@ function createTrack(z){
       new THREE.MeshStandardMaterial({ color: 0x888888 })
     );
     wall.position.set(x,1.25,z);
-    wall.castShadow = true;
     g.add(wall);
   });
 
@@ -141,112 +134,12 @@ for(let i=0;i<TRACK_COUNT;i++){
 }
 
 // ========================
-// ENVIRONMENT
-// ========================
-const environment = [];
-
-function spawnBuilding(){
-  const geo = new THREE.BoxGeometry(4, 6 + Math.random()*4, 4);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
-
-  const b = new THREE.Mesh(geo, mat);
-
-  const side = Math.random() < 0.5 ? -12 : 12;
-  b.position.set(side, geo.parameters.height/2, -80);
-
-  b.castShadow = true;
-
-  scene.add(b);
-  environment.push({ mesh:b, speed: SPEED * 0.4 });
-}
-
-function spawnPole(){
-  const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.1,0.1,3),
-    new THREE.MeshStandardMaterial({ color: 0x333333 })
-  );
-
-  const side = Math.random() < 0.5 ? -5 : 5;
-  pole.position.set(side,1.5,-60);
-
-  pole.castShadow = true;
-
-  scene.add(pole);
-  environment.push({ mesh:pole, speed: SPEED * 0.7 });
-}
-
-function spawnBush(){
-  const bush = new THREE.Mesh(
-    new THREE.PlaneGeometry(3,3),
-    new THREE.MeshBasicMaterial({ map:bushTex, transparent:true })
-  );
-
-  const side = Math.random() < 0.5 ? -7 : 7;
-  bush.position.set(side,1.5,-60);
-
-  scene.add(bush);
-  environment.push({ mesh:bush, speed: SPEED });
-}
-
-// ========================
-// DAY/NIGHT CYCLE 🌗
-// ========================
-let time = 0;
-
-function updateDayNight(delta){
-  time += delta * 0.05;
-
-  const cycle = (Math.sin(time) + 1) / 2;
-
-  // sky color
-  scene.background = new THREE.Color().setHSL(0.6, 0.6, 0.4 + cycle * 0.3);
-
-  // sun intensity
-  sun.intensity = 0.5 + cycle * 1.2;
-
-  // ambient
-  ambient.intensity = 0.3 + cycle * 0.5;
-
-  // move sun
-  sun.position.set(
-    Math.sin(time) * 20,
-    20,
-    Math.cos(time) * 20
-  );
-}
-
-// ========================
-// COINS + PARTICLES
+// COINS
 // ========================
 const coins = [];
-const particles = [];
-
-function spawnParticles(x,y,z){
-  for(let i=0;i<6;i++){
-    const p = new THREE.Mesh(
-      new THREE.SphereGeometry(0.05,6,6),
-      new THREE.MeshBasicMaterial({
-        color:0xffd700,
-        transparent:true,
-        opacity:1
-      })
-    );
-
-    p.position.set(x,y,z);
-
-    p.userData.velocity = {
-      x:(Math.random()-0.5)*2,
-      y:Math.random()*2,
-      z:(Math.random()-0.5)*2
-    };
-
-    scene.add(p);
-    particles.push(p);
-  }
-}
 
 function spawnCoin(){
-  const x = (LEVEL===1)?0:[-2,0,2][Math.random()*3|0];
+  const x = 0; // level 1 center
 
   const c = new THREE.Mesh(
     new THREE.PlaneGeometry(0.8,0.8),
@@ -261,6 +154,8 @@ function spawnCoin(){
   coins.push(c);
 }
 
+// ========================
+// CONTROLS
 // ========================
 window.addEventListener('keydown', e=>{
   if(gameOver) return;
@@ -296,21 +191,19 @@ window.startGame = () => {
 // LOOP
 // ========================
 const clock=new THREE.Clock();
-let coinTimer=0, envTimer=0;
+let coinTimer=0;
 
 function animate(){
   requestAnimationFrame(animate);
   const delta=clock.getDelta();
 
-  updateDayNight(delta);
-
   if(!gameOver){
 
-    score+=Math.floor(delta*100);
-    scoreEl.innerText=score;
-
-    velocityY-=20*delta;
-    y+=velocityY*delta;
+    // ========================
+    // PHYSICS
+    // ========================
+    velocityY -= 20 * delta;
+    y += velocityY * delta;
 
     if(y<=1.5){
       y=1.5;
@@ -318,41 +211,57 @@ function animate(){
       isJumping=false;
     }
 
-    const targetX=lane*2;
+    // ========================
+    // CAMERA REAL FEEL 🔥
+    // ========================
+    bobTime += delta * 10;
 
-    camera.position.x+=(targetX-camera.position.x)*0.2;
-    camera.position.y=isDucking?1:y;
-    camera.position.z=5;
+    const bob = Math.sin(bobTime) * 0.1;
 
-    camera.lookAt(camera.position.x,camera.position.y,-25);
+    const targetX = lane * 2;
 
-    // ENV
-    envTimer += delta;
-    if(envTimer > 0.5){
-      spawnBush();
-      spawnPole();
-      if(Math.random()<0.5) spawnBuilding();
-      envTimer=0;
+    camera.position.x += (targetX - camera.position.x) * 0.2;
+    camera.position.y = (isDucking ? 1 : y) + bob;
+    camera.position.z = 5;
+
+    // LOOK slightly down forward
+    camera.lookAt(
+      camera.position.x,
+      camera.position.y - 0.2,
+      -20
+    );
+
+    // slight tilt
+    camera.rotation.z = -lane * 0.05;
+
+    // ========================
+    // MOVE WORLD
+    // ========================
+    let farthestZ = Infinity;
+
+    for(const t of track){
+      t.position.z += SPEED * delta;
+      if(t.position.z < farthestZ) farthestZ = t.position.z;
     }
 
-    for(let i=environment.length-1;i>=0;i--){
-      const e=environment[i];
-
-      e.mesh.position.z+=e.speed*delta;
-
-      if(e.mesh.position.z>10){
-        scene.remove(e.mesh);
-        environment.splice(i,1);
+    for(const t of track){
+      if(t.position.z > TRACK_LENGTH){
+        t.position.z = farthestZ - TRACK_LENGTH;
       }
     }
 
-    // COINS
-    coinTimer+=delta;
-    if(coinTimer>0.6){
+    // ========================
+    // SPAWN COINS
+    // ========================
+    coinTimer += delta;
+    if(coinTimer > 0.6){
       spawnCoin();
-      coinTimer=0;
+      coinTimer = 0;
     }
 
+    // ========================
+    // COINS
+    // ========================
     for(let i=coins.length-1;i>=0;i--){
       const c=coins[i];
 
@@ -370,9 +279,8 @@ function animate(){
           coinSound.currentTime=0;
           coinSound.play().catch(()=>{});
 
-          spawnParticles(c.position.x,c.position.y,c.position.z);
-
           score+=10;
+          scoreEl.innerText=score;
         }
       }
 
@@ -390,22 +298,6 @@ function animate(){
       if(c.position.z>10){
         scene.remove(c);
         coins.splice(i,1);
-      }
-    }
-
-    // PARTICLES
-    for(let i=particles.length-1;i>=0;i--){
-      const p=particles[i];
-
-      p.position.x+=p.userData.velocity.x*delta;
-      p.position.y+=p.userData.velocity.y*delta;
-      p.position.z+=p.userData.velocity.z*delta;
-
-      p.material.opacity -= 2*delta;
-
-      if(p.material.opacity<=0){
-        scene.remove(p);
-        particles.splice(i,1);
       }
     }
   }
