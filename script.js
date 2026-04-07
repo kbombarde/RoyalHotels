@@ -1,8 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js';
 
 // ========================
-// CONFIG
-// ========================
 const TRACK_LENGTH = 30;
 const TRACK_COUNT = 10;
 
@@ -123,7 +121,6 @@ function createTrack(z){
   });
 
   addSideProps(g,z);
-
   scene.add(g);
   return g;
 }
@@ -151,7 +148,7 @@ function spawnCoin(){
 }
 
 // ========================
-// OBSTACLES
+// OBSTACLES (NEW LEVEL LOGIC)
 // ========================
 const obstacles = [];
 
@@ -159,67 +156,16 @@ function spawnObstacle(){
 
   if(LEVEL === 1) return;
 
-  // LEVEL 2 → JUMP
-  if(LEVEL === 2){
-    [-2,0,2].forEach(x=>{
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(2,1.5),
-        new THREE.MeshBasicMaterial({ map:barricadeTex, transparent:true })
-      );
-      mesh.position.set(x,1,-60);
-      mesh.userData.type='jump';
-      scene.add(mesh);
-      obstacles.push(mesh);
-    });
-    return;
-  }
-
-  // LEVEL 3 → DUCK
-  if(LEVEL === 3){
-    [-2,0,2].forEach(x=>{
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.5,1),
-        new THREE.MeshBasicMaterial({ map:barTex, transparent:true })
-      );
-      mesh.position.set(x,2,-60);
-      mesh.userData.type='duck';
-      scene.add(mesh);
-      obstacles.push(mesh);
-    });
-    return;
-  }
-
-  // =========================
-  // 🔥 LEVEL 4 → LANE SWITCH
-  // =========================
-  if(LEVEL === 4){
-
-    const lanes = [-2,0,2];
-
-    // pick one open lane
-    const openIndex = Math.floor(Math.random()*3);
-
-    lanes.forEach((x, i)=>{
-      if(i === openIndex) return; // leave one open
-
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.2,1.2),
-        new THREE.MeshBasicMaterial({ map:barrelTex, transparent:true })
-      );
-
-      mesh.position.set(x,0.8,-60);
-      mesh.userData.type='side';
-
-      scene.add(mesh);
-      obstacles.push(mesh);
-    });
-
-    return;
-  }
-
-  // LEVEL 5 & 6 → MIX
-  let type = ['jump','duck','side'][Math.random()*3|0];
   const x = [-2,0,2][Math.random()*3|0];
+  let type;
+
+  if(LEVEL === 2) type = 'jump';
+
+  else if(LEVEL === 3)
+    type = Math.random() < 0.5 ? 'jump' : 'duck';
+
+  else
+    type = ['jump','duck','side'][Math.random()*3|0];
 
   let mesh;
 
@@ -254,7 +200,7 @@ function spawnObstacle(){
 }
 
 // ========================
-// CONTROLS + LOOP (UNCHANGED)
+// CONTROLS
 // ========================
 window.addEventListener('keydown', e=>{
   if(gameOver) return;
@@ -273,16 +219,23 @@ window.addEventListener('keydown', e=>{
   }
 });
 
+// ========================
+// RESET (UPDATED SPEED)
+// ========================
 function resetGame(){
   score=0;
   gameOver=false;
 
-  SPEED=18;
+  SPEED = 18;
 
-  if(LEVEL>=4) SPEED*=1.1;
-  if(LEVEL>=5) SPEED*=1.1;
+  if(LEVEL === 4) SPEED *= 1.1;
+  if(LEVEL === 5) SPEED *= 1.25;
+  if(LEVEL === 6) SPEED *= 1.4;
 }
 
+// ========================
+// LOOP
+// ========================
 const clock=new THREE.Clock();
 let spawnTimer=0,coinTimer=0;
 
