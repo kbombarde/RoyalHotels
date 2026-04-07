@@ -3,18 +3,25 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.mod
 // ========================
 const TRACK_LENGTH = 30;
 const TRACK_COUNT = 10;
-
 let SPEED = 20;
-let LEVEL = 1;
 
+// ========================
 // UI
+// ========================
 const scoreEl = document.getElementById('score');
 const menu = document.getElementById('menu');
 
-// SOUND
+// ========================
+// 🔊 SOUNDS
+// ========================
 const coinSound = new Audio('./assets/sounds/coin.mp3');
-coinSound.volume = 0.4;
+const jumpSound = new Audio('./assets/sounds/jump.mp3');
+const duckSound = new Audio('./assets/sounds/duck.mp3');
+const laneSound = new Audio('./assets/sounds/swish.mp3');
 
+[coinSound, jumpSound, duckSound, laneSound].forEach(s => s.volume = 0.4);
+
+// unlock audio
 window.addEventListener('click', () => {
   coinSound.play().then(()=>coinSound.pause()).catch(()=>{});
 }, { once: true });
@@ -28,7 +35,7 @@ const groundTex = loader.load('./assets/textures/ground.png');
 const railTex = loader.load('./assets/textures/rail.png');
 const coinTex = loader.load('./assets/textures/coin.png');
 
-[groundTex, railTex].forEach(t => {
+[groundTex, railTex].forEach(t=>{
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
 });
 
@@ -56,21 +63,15 @@ const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById('game'),
   antialias: true
 });
-
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
 
 // ========================
 // LIGHT
 // ========================
 scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
-const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-sun.position.set(10,20,10);
-scene.add(sun);
-
 // ========================
-// PLAYER STATE
+// PLAYER
 // ========================
 let lane = 0;
 let y = 1.5;
@@ -83,7 +84,7 @@ let score = 0;
 let gameOver = true;
 
 // ========================
-// CAMERA EFFECTS
+// CAMERA FX
 // ========================
 let bobTime = 0;
 
@@ -104,8 +105,6 @@ function createTrack(z){
   ground.position.set(0,0,z);
   g.add(ground);
 
-  railTex.repeat.set(1,10);
-
   [-2,0,2].forEach(x=>{
     const rail = new THREE.Mesh(
       new THREE.BoxGeometry(0.25,0.25,TRACK_LENGTH),
@@ -115,7 +114,6 @@ function createTrack(z){
     g.add(rail);
   });
 
-  // walls
   [-6,6].forEach(x=>{
     const wall = new THREE.Mesh(
       new THREE.BoxGeometry(1.5,2.5,TRACK_LENGTH),
@@ -134,19 +132,48 @@ for(let i=0;i<TRACK_COUNT;i++){
 }
 
 // ========================
+// PARTICLES (REFINED)
+// ========================
+const particles = [];
+
+function spawnParticles(x,y,z){
+  for(let i=0;i<5;i++){
+    const p = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04,6,6),
+      new THREE.MeshBasicMaterial({
+        color:0xffd700,
+        transparent:true,
+        opacity:0.9
+      })
+    );
+
+    p.position.set(x,y,z);
+
+    p.userData.velocity = {
+      x:(Math.random()-0.5)*1.5,
+      y:Math.random()*1.5,
+      z:(Math.random()-0.5)*1.5
+    };
+
+    p.userData.life = 0.5;
+
+    scene.add(p);
+    particles.push(p);
+  }
+}
+
+// ========================
 // COINS
 // ========================
 const coins = [];
 
 function spawnCoin(){
-  const x = 0; // level 1 center
-
   const c = new THREE.Mesh(
     new THREE.PlaneGeometry(0.8,0.8),
     new THREE.MeshBasicMaterial({ map:coinTex, transparent:true })
   );
 
-  c.position.set(x,1.5,-60);
+  c.position.set(0,1.5,-60);
   c.userData.collected=false;
   c.userData.scale=1;
 
@@ -155,21 +182,37 @@ function spawnCoin(){
 }
 
 // ========================
-// CONTROLS
+// CONTROLS + SOUND
 // ========================
 window.addEventListener('keydown', e=>{
   if(gameOver) return;
 
-  if(e.key==='ArrowLeft') lane=Math.max(-1,lane-1);
-  if(e.key==='ArrowRight') lane=Math.min(1,lane+1);
+  if(e.key==='ArrowLeft'){
+    lane = Math.max(-1,lane-1);
+    laneSound.currentTime=0;
+    laneSound.play();
+  }
+
+  if(e.key==='ArrowRight'){
+    lane = Math.min(1,lane+1);
+    laneSound.currentTime=0;
+    laneSound.play();
+  }
 
   if(e.key==='ArrowUp'&&!isJumping){
     velocityY=8;
     isJumping=true;
+
+    jumpSound.currentTime=0;
+    jumpSound.play();
   }
 
   if(e.key==='ArrowDown'){
     isDucking=true;
+
+    duckSound.currentTime=0;
+    duckSound.play();
+
     setTimeout(()=>isDucking=false,400);
   }
 });
@@ -182,7 +225,6 @@ function resetGame(){
 
 // ========================
 window.startGame = () => {
-  LEVEL = parseInt(document.getElementById('level').value);
   menu.style.display = 'none';
   resetGame();
 };
@@ -199,9 +241,7 @@ function animate(){
 
   if(!gameOver){
 
-    // ========================
-    // PHYSICS
-    // ========================
+    // physics
     velocityY -= 20 * delta;
     y += velocityY * delta;
 
@@ -211,36 +251,24 @@ function animate(){
       isJumping=false;
     }
 
-    // ========================
-    // CAMERA REAL FEEL 🔥
-    // ========================
+    // camera feel
     bobTime += delta * 10;
+    const bob = Math.sin(bobTime)*0.1;
 
-    const bob = Math.sin(bobTime) * 0.1;
+    const targetX = lane*2;
 
-    const targetX = lane * 2;
-
-    camera.position.x += (targetX - camera.position.x) * 0.2;
-    camera.position.y = (isDucking ? 1 : y) + bob;
+    camera.position.x += (targetX-camera.position.x)*0.2;
+    camera.position.y = (isDucking?1:y) + bob;
     camera.position.z = 5;
 
-    // LOOK slightly down forward
-    camera.lookAt(
-      camera.position.x,
-      camera.position.y - 0.2,
-      -20
-    );
-
-    // slight tilt
+    camera.lookAt(camera.position.x, camera.position.y-0.2, -20);
     camera.rotation.z = -lane * 0.05;
 
-    // ========================
-    // MOVE WORLD
-    // ========================
+    // move world
     let farthestZ = Infinity;
 
     for(const t of track){
-      t.position.z += SPEED * delta;
+      t.position.z += SPEED*delta;
       if(t.position.z < farthestZ) farthestZ = t.position.z;
     }
 
@@ -250,18 +278,14 @@ function animate(){
       }
     }
 
-    // ========================
-    // SPAWN COINS
-    // ========================
-    coinTimer += delta;
-    if(coinTimer > 0.6){
+    // spawn coins
+    coinTimer+=delta;
+    if(coinTimer>0.6){
       spawnCoin();
-      coinTimer = 0;
+      coinTimer=0;
     }
 
-    // ========================
-    // COINS
-    // ========================
+    // coins
     for(let i=coins.length-1;i>=0;i--){
       const c=coins[i];
 
@@ -277,7 +301,9 @@ function animate(){
           c.userData.collected=true;
 
           coinSound.currentTime=0;
-          coinSound.play().catch(()=>{});
+          coinSound.play();
+
+          spawnParticles(c.position.x,c.position.y,c.position.z);
 
           score+=10;
           scoreEl.innerText=score;
@@ -285,7 +311,7 @@ function animate(){
       }
 
       if(c.userData.collected){
-        c.userData.scale+=0.12;
+        c.userData.scale+=0.1;
         c.scale.set(c.userData.scale,c.userData.scale,1);
         c.position.y+=1.5*delta;
 
@@ -298,6 +324,22 @@ function animate(){
       if(c.position.z>10){
         scene.remove(c);
         coins.splice(i,1);
+      }
+    }
+
+    // particles
+    for(let i=particles.length-1;i>=0;i--){
+      const p=particles[i];
+
+      p.position.x+=p.userData.velocity.x*delta;
+      p.position.y+=p.userData.velocity.y*delta;
+      p.position.z+=p.userData.velocity.z*delta;
+
+      p.material.opacity -= 2*delta;
+
+      if(p.material.opacity<=0){
+        scene.remove(p);
+        particles.splice(i,1);
       }
     }
   }
