@@ -65,15 +65,11 @@ const renderer=new THREE.WebGLRenderer({
 renderer.setSize(innerWidth,innerHeight);
 
 // ========================
-// LIGHT
-// ========================
 scene.add(new THREE.AmbientLight(0xffffff,0.7));
 const light=new THREE.DirectionalLight(0xffffff,0.6);
 light.position.set(5,10,5);
 scene.add(light);
 
-// ========================
-// PLAYER
 // ========================
 let lane=0;
 let y=1.5;
@@ -88,8 +84,6 @@ let comboTimer=0;
 let gameOver=true;
 
 let bobTime=0;
-
-// 🔥 NEW (landing effect)
 let landingImpact=0;
 
 // ========================
@@ -174,6 +168,7 @@ function spawnObstacle(){
   createObstacle([-2,0,2][Math.random()*3|0],types[Math.random()*3|0]);
 }
 
+// ========================
 function createObstacle(x,type){
 
   let mesh;
@@ -220,7 +215,7 @@ window.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight'){ lane=Math.min(1,lane+1); playSound('lane'); }
 
   if(e.key==='ArrowUp'&&!isJumping){
-    velocityY=9; // 🔥 stronger jump
+    velocityY=9;
     isJumping=true;
     playSound('jump');
   }
@@ -255,29 +250,23 @@ function animate(){
 
   if(!gameOver){
 
-    // combo
     comboTimer-=delta;
     if(comboTimer<=0){
       combo=1;
       comboEl.style.opacity=0;
     }
 
-    // 🔥 BETTER GRAVITY (arc)
+    // physics
     velocityY -= 28*delta;
     y += velocityY*delta;
 
-    // 🔥 LANDING IMPACT
     if(y<=1.5){
-      if(isJumping){
-        landingImpact = 0.25; // trigger bounce
-      }
-
+      if(isJumping) landingImpact=0.25;
       y=1.5;
       velocityY=0;
       isJumping=false;
     }
 
-    // smooth landing recovery
     if(landingImpact>0){
       landingImpact -= delta*3;
     }
@@ -286,15 +275,20 @@ function animate(){
     bobTime+=delta*10;
     const bob=Math.sin(bobTime)*0.1;
 
+    const duckOffset = isDucking ? -0.6 : 0;
     const impactOffset = Math.max(landingImpact,0);
 
     camera.position.set(
       lane*2,
-      y + bob - impactOffset,
+      y + bob + duckOffset - impactOffset,
       5
     );
 
-    camera.lookAt(camera.position.x,camera.position.y,-20);
+    camera.lookAt(
+      camera.position.x,
+      camera.position.y - (isDucking ? 0.3 : 0),
+      -20
+    );
 
     // track
     let farZ=Infinity;
