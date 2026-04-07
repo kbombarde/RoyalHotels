@@ -135,78 +135,34 @@ for(let i=0;i<TRACK_COUNT;i++){
 const coins = [];
 
 function spawnCoin(){
-  const x = [-2,0,2][Math.random()*3|0];
+
+  // ✅ LEVEL 1 → ONLY CENTER
+  const x = (LEVEL === 1) ? 0 : [-2,0,2][Math.random()*3|0];
 
   const c = new THREE.Mesh(
     new THREE.PlaneGeometry(0.8,0.8),
-    new THREE.MeshBasicMaterial({ map:coinTex, transparent:true })
+    new THREE.MeshBasicMaterial({
+      map: coinTex,
+      transparent: true
+    })
   );
 
   c.position.set(x,1.5,-60);
+
   scene.add(c);
   coins.push(c);
 }
 
 // ========================
-// OBSTACLES (FINAL)
+// OBSTACLES
 // ========================
 const obstacles = [];
 
 function spawnObstacle(){
 
+  // ✅ LEVEL 1 → NO OBSTACLES
   if(LEVEL === 1) return;
 
-  // LEVEL 2 → FORCE JUMP
-  if(LEVEL === 2){
-    [-2,0,2].forEach(x=>{
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(2,1.5),
-        new THREE.MeshBasicMaterial({ map:barricadeTex, transparent:true })
-      );
-      mesh.position.set(x,1,-60);
-      mesh.userData.type='jump';
-
-      scene.add(mesh);
-      obstacles.push(mesh);
-    });
-    return;
-  }
-
-  // LEVEL 3 → DUCK + OCCASIONAL JUMP
-  if(LEVEL === 3){
-
-    if(Math.random() < 0.7){
-      // full duck
-      [-2,0,2].forEach(x=>{
-        const mesh = new THREE.Mesh(
-          new THREE.PlaneGeometry(2.5,1),
-          new THREE.MeshBasicMaterial({ map:barTex, transparent:true })
-        );
-        mesh.position.set(x,2,-60);
-        mesh.userData.type='duck';
-
-        scene.add(mesh);
-        obstacles.push(mesh);
-      });
-
-    } else {
-      // jump only center
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(2,1.5),
-        new THREE.MeshBasicMaterial({ map:barricadeTex, transparent:true })
-      );
-
-      mesh.position.set(0,1,-60);
-      mesh.userData.type='jump';
-
-      scene.add(mesh);
-      obstacles.push(mesh);
-    }
-
-    return;
-  }
-
-  // OTHER LEVELS
   let type = ['jump','duck','side'][Math.random()*3|0];
   const x = [-2,0,2][Math.random()*3|0];
 
@@ -268,7 +224,6 @@ window.addEventListener('keydown', e=>{
 function resetGame(){
   score=0;
   gameOver=false;
-
   SPEED=18;
 }
 
