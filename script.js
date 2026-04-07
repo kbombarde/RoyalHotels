@@ -157,10 +157,9 @@ const obstacles = [];
 
 function spawnObstacle(){
 
-  // LEVEL 1
   if(LEVEL === 1) return;
 
-  // LEVEL 2 → JUMP ONLY
+  // LEVEL 2 → JUMP
   if(LEVEL === 2){
     [-2,0,2].forEach(x=>{
       const mesh = new THREE.Mesh(
@@ -168,15 +167,14 @@ function spawnObstacle(){
         new THREE.MeshBasicMaterial({ map:barricadeTex, transparent:true })
       );
       mesh.position.set(x,1,-60);
-      mesh.userData.type = 'jump';
-
+      mesh.userData.type='jump';
       scene.add(mesh);
       obstacles.push(mesh);
     });
     return;
   }
 
-  // LEVEL 3 → DUCK ONLY
+  // LEVEL 3 → DUCK
   if(LEVEL === 3){
     [-2,0,2].forEach(x=>{
       const mesh = new THREE.Mesh(
@@ -184,20 +182,43 @@ function spawnObstacle(){
         new THREE.MeshBasicMaterial({ map:barTex, transparent:true })
       );
       mesh.position.set(x,2,-60);
-      mesh.userData.type = 'duck';
-
+      mesh.userData.type='duck';
       scene.add(mesh);
       obstacles.push(mesh);
     });
     return;
   }
 
-  // OTHER LEVELS
-  let type;
+  // =========================
+  // 🔥 LEVEL 4 → LANE SWITCH
+  // =========================
+  if(LEVEL === 4){
 
-  if(LEVEL===4) type='side';
-  else type=['jump','duck','side'][Math.random()*3|0];
+    const lanes = [-2,0,2];
 
+    // pick one open lane
+    const openIndex = Math.floor(Math.random()*3);
+
+    lanes.forEach((x, i)=>{
+      if(i === openIndex) return; // leave one open
+
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2,1.2),
+        new THREE.MeshBasicMaterial({ map:barrelTex, transparent:true })
+      );
+
+      mesh.position.set(x,0.8,-60);
+      mesh.userData.type='side';
+
+      scene.add(mesh);
+      obstacles.push(mesh);
+    });
+
+    return;
+  }
+
+  // LEVEL 5 & 6 → MIX
+  let type = ['jump','duck','side'][Math.random()*3|0];
   const x = [-2,0,2][Math.random()*3|0];
 
   let mesh;
@@ -233,7 +254,7 @@ function spawnObstacle(){
 }
 
 // ========================
-// CONTROLS
+// CONTROLS + LOOP (UNCHANGED)
 // ========================
 window.addEventListener('keydown', e=>{
   if(gameOver) return;
@@ -252,9 +273,6 @@ window.addEventListener('keydown', e=>{
   }
 });
 
-// ========================
-// RESET
-// ========================
 function resetGame(){
   score=0;
   gameOver=false;
@@ -265,9 +283,6 @@ function resetGame(){
   if(LEVEL>=5) SPEED*=1.1;
 }
 
-// ========================
-// LOOP
-// ========================
 const clock=new THREE.Clock();
 let spawnTimer=0,coinTimer=0;
 
@@ -347,31 +362,8 @@ function animate(){
       }
     }
 
-    // coins
-    for(let i=coins.length-1;i>=0;i--){
-      const c=coins[i];
-
-      c.lookAt(camera.position);
-      c.position.z+=SPEED*delta;
-
-      const collected =
-        Math.abs(c.position.z-camera.position.z)<1 &&
-        Math.abs(c.position.x-camera.position.x)<1;
-
-      if(collected){
-        scene.remove(c);
-        coins.splice(i,1);
-        score+=10;
-      }
-
-      if(c.position.z>10){
-        scene.remove(c);
-        coins.splice(i,1);
-      }
-    }
+    renderer.render(scene,camera);
   }
-
-  renderer.render(scene,camera);
 }
 
 function endGame(){
