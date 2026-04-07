@@ -11,6 +11,10 @@ let LEVEL = 1;
 const scoreEl = document.getElementById('score');
 const menu = document.getElementById('menu');
 
+// 🔊 SOUND
+const coinSound = new Audio('./assets/sounds/coin.mp3');
+coinSound.volume = 0.4;
+
 window.startGame = () => {
   LEVEL = parseInt(document.getElementById('level').value);
   menu.style.display = 'none';
@@ -136,31 +140,27 @@ const coins = [];
 
 function spawnCoin(){
 
-  // ✅ LEVEL 1 → ONLY CENTER
   const x = (LEVEL === 1) ? 0 : [-2,0,2][Math.random()*3|0];
 
   const c = new THREE.Mesh(
     new THREE.PlaneGeometry(0.8,0.8),
-    new THREE.MeshBasicMaterial({
-      map: coinTex,
-      transparent: true
-    })
+    new THREE.MeshBasicMaterial({ map:coinTex, transparent:true })
   );
 
   c.position.set(x,1.5,-60);
+  c.userData.collected = false;
+  c.userData.scale = 1;
 
   scene.add(c);
   coins.push(c);
 }
 
 // ========================
-// OBSTACLES
+// OBSTACLES (same as before)
 // ========================
 const obstacles = [];
 
 function spawnObstacle(){
-
-  // ✅ LEVEL 1 → NO OBSTACLES
   if(LEVEL === 1) return;
 
   let type = ['jump','duck','side'][Math.random()*3|0];
@@ -284,46 +284,39 @@ function animate(){
       coinTimer=0;
     }
 
-    // obstacles
-    for(let i=obstacles.length-1;i>=0;i--){
-      const o=obstacles[i];
-
-      o.lookAt(camera.position);
-      o.position.z+=SPEED*delta;
-
-      const hit =
-        Math.abs(o.position.z-camera.position.z)<1 &&
-        Math.abs(o.position.x-camera.position.x)<1;
-
-      if(hit){
-        const t=o.userData.type;
-
-        if(t==='jump'&&(!isJumping||y<=1.6)) endGame();
-        if(t==='duck'&&!isDucking) endGame();
-        if(t==='side') endGame();
-      }
-
-      if(o.position.z>10){
-        scene.remove(o);
-        obstacles.splice(i,1);
-      }
-    }
-
-    // coins
+    // COINS WITH ANIMATION
     for(let i=coins.length-1;i>=0;i--){
       const c=coins[i];
 
       c.lookAt(camera.position);
       c.position.z+=SPEED*delta;
 
-      const collected =
-        Math.abs(c.position.z-camera.position.z)<1 &&
-        Math.abs(c.position.x-camera.position.x)<1;
+      if(!c.userData.collected){
+        const hit =
+          Math.abs(c.position.z-camera.position.z)<1 &&
+          Math.abs(c.position.x-camera.position.x)<1;
 
-      if(collected){
-        scene.remove(c);
-        coins.splice(i,1);
-        score+=10;
+        if(hit){
+          c.userData.collected = true;
+
+          // 🔊 PLAY SOUND
+          coinSound.currentTime = 0;
+          coinSound.play();
+
+          score+=10;
+        }
+      }
+
+      // ✨ ANIMATION
+      if(c.userData.collected){
+        c.userData.scale += 0.1;
+        c.scale.set(c.userData.scale, c.userData.scale, 1);
+        c.position.y += 2 * delta;
+
+        if(c.userData.scale > 2){
+          scene.remove(c);
+          coins.splice(i,1);
+        }
       }
 
       if(c.position.z>10){
