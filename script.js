@@ -11,14 +11,13 @@
 <tr>
     <td>Logon Token:</td>
     <td><input type="text" id="token" size="80"></td>
-    <td><button type="button" id="loadFoldersBtn">Load Folders</button></td>
 </tr>
 
 <tr>
     <td>Parent Folder:</td>
     <td>
         <select id="parentId">
-            <option value="">-- Select Folder --</option>
+            <option value="">-- Enter Token & Click Anywhere --</option>
         </select>
     </td>
 </tr>
@@ -35,13 +34,13 @@
 </table>
 
 <br>
-<button type="button" id="fetchBtn">Fetch Data</button>
+<button id="fetchBtn">Fetch Data</button>
 
 <p id="statusMsg"></p>
 
 <br>
 
-<table border="1" id="resultTable" cellspacing="0" cellpadding="5">
+<table border="1" id="resultTable">
 <thead>
 <tr>
 <th>Name</th><th>Type</th><th>Status</th><th>Location</th><th>Owner</th>
@@ -54,34 +53,24 @@
 
 <script>
 
-// 🚫 HARD STOP any form submit / refresh
+// 🚫 BLOCK ANY REFRESH
 document.addEventListener("submit", e => e.preventDefault());
 document.addEventListener("keydown", e => {
     if (e.key === "Enter") e.preventDefault();
 });
 
 const baseUrl = "http://YOUR_BO_SERVER:6405/biprws/v1";
+let foldersLoaded = false;
 
-let isLoading = false;
+// 📂 AUTO LOAD FOLDERS WHEN TOKEN IS ENTERED
+document.getElementById("token").addEventListener("blur", loadFolders);
 
-function toDate(val) {
-    return val ? new Date(val) : null;
-}
+async function loadFolders() {
 
-function inRange(date, start, end) {
-    if (!date) return true;
-    if (start && date < start) return false;
-    if (end && date > end) return false;
-    return true;
-}
-
-// 📂 Load folders
-document.getElementById("loadFoldersBtn").onclick = async () => {
+    if (foldersLoaded) return;
 
     const token = document.getElementById("token").value.trim();
-    const dropdown = document.getElementById("parentId");
-
-    if (!token) return alert("Enter token");
+    if (!token) return;
 
     try {
         const res = await fetch(`${baseUrl}/folders`, {
@@ -89,28 +78,29 @@ document.getElementById("loadFoldersBtn").onclick = async () => {
         });
 
         const data = await res.json();
-        const folders = data.entries || [];
+        const dropdown = document.getElementById("parentId");
 
         dropdown.innerHTML = '<option value="">-- Select Folder --</option>';
 
-        folders.forEach(f => {
+        (data.entries || []).forEach(f => {
             let opt = document.createElement("option");
             opt.value = f.id;
             opt.text = f.name;
             dropdown.appendChild(opt);
         });
 
+        foldersLoaded = true;
+
     } catch (e) {
+        console.error("Folder load failed", e);
         alert("Folder load failed (CORS likely)");
-        console.error(e);
     }
-};
+}
 
-// 🚀 Fetch Data (parallel)
-document.getElementById("fetchBtn").onclick = async () => {
+// 🚀 FETCH DATA
+document.getElementById("fetchBtn").addEventListener("click", async function(e) {
 
-    if (isLoading) return;
-    isLoading = true;
+    e.preventDefault();
 
     const statusMsg = document.getElementById("statusMsg");
     const tableBody = document.querySelector("#resultTable tbody");
@@ -129,10 +119,17 @@ document.getElementById("fetchBtn").onclick = async () => {
         const statusFilter = document.getElementById("status").value.trim();
         const type = document.getElementById("type").value.trim();
 
-        const compStart = toDate(document.getElementById("compStart").value);
-        const compEnd = toDate(document.getElementById("compEnd").value);
-        const nextStart = toDate(document.getElementById("nextStart").value);
-        const nextEnd = toDate(document.getElementById("nextEnd").value);
+        const compStart = document.getElementById("compStart").value ? new Date(document.getElementById("compStart").value) : null;
+        const compEnd = document.getElementById("compEnd").value ? new Date(document.getElementById("compEnd").value) : null;
+        const nextStart = document.getElementById("nextStart").value ? new Date(document.getElementById("nextStart").value) : null;
+        const nextEnd = document.getElementById("nextEnd").value ? new Date(document.getElementById("nextEnd").value) : null;
+
+        function inRange(d, s, e) {
+            if (!d) return true;
+            if (s && d < s) return false;
+            if (e && d > e) return false;
+            return true;
+        }
 
         let query = `
             SELECT SI_ID, SI_NAME, SI_OWNER, SI_PARENTID, SI_CREATION_TIME, SI_KIND
@@ -155,35 +152,32 @@ document.getElementById("fetchBtn").onclick = async () => {
         const cmsData = await cmsRes.json();
         const objects = cmsData.entries || [];
 
-        // ⚡ PARALLEL schedule calls
-        const schedulePromises = objects.map(obj =>
+        const promises = objects.map(obj =>
             fetch(`${baseUrl}/documents/${obj.SI_ID}/schedules`, {
                 headers: { "X-SAP-LogonToken": token }
             })
             .then(r => r.ok ? r.json() : null)
-            .then(data => ({ obj, schedules: data?.entries || [] }))
+            .then(d => ({ obj, schedules: d?.entries || [] }))
             .catch(() => null)
         );
 
-        const results = await Promise.all(schedulePromises);
+        const results = await Promise.all(promises);
 
         let count = 0;
 
-        results.forEach(res => {
-            if (!res) return;
+        results.forEach(r => {
+            if (!r) return;
 
-            const { obj, schedules } = res;
+            r.schedules.forEach(s => {
 
-            schedules.forEach(sched => {
-
-                const compTime = sched.endTime ? new Date(sched.endTime) : null;
-                const nextTime = sched.nextRunTime ? new Date(sched.nextRunTime) : null;
+                const compTime = s.endTime ? new Date(s.endTime) : null;
+                const nextTime = s.nextRunTime ? new Date(s.nextRunTime) : null;
 
                 if (!inRange(compTime, compStart, compEnd)) return;
                 if (!inRange(nextTime, nextStart, nextEnd)) return;
-                if (statusFilter && sched.status !== statusFilter) return;
+                if (statusFilter && s.status !== statusFilter) return;
 
-                const tr = document.createElement("tr");
+                let tr = document.createElement("tr");
 
                 function td(v) {
                     let c = document.createElement("td");
@@ -191,19 +185,19 @@ document.getElementById("fetchBtn").onclick = async () => {
                     return c;
                 }
 
-                tr.appendChild(td(obj.SI_NAME));
-                tr.appendChild(td(obj.SI_KIND));
-                tr.appendChild(td(sched.status));
-                tr.appendChild(td(obj.SI_PARENTID));
-                tr.appendChild(td(obj.SI_OWNER));
-                tr.appendChild(td(sched.endTime));
-                tr.appendChild(td(sched.nextRunTime));
-                tr.appendChild(td(obj.SI_CREATION_TIME));
-                tr.appendChild(td(sched.startTime));
-                tr.appendChild(td(sched.endTime));
-                tr.appendChild(td(sched.expiryTime));
-                tr.appendChild(td(sched.server));
-                tr.appendChild(td(sched.errorMessage));
+                tr.appendChild(td(r.obj.SI_NAME));
+                tr.appendChild(td(r.obj.SI_KIND));
+                tr.appendChild(td(s.status));
+                tr.appendChild(td(r.obj.SI_PARENTID));
+                tr.appendChild(td(r.obj.SI_OWNER));
+                tr.appendChild(td(s.endTime));
+                tr.appendChild(td(s.nextRunTime));
+                tr.appendChild(td(r.obj.SI_CREATION_TIME));
+                tr.appendChild(td(s.startTime));
+                tr.appendChild(td(s.endTime));
+                tr.appendChild(td(s.expiryTime));
+                tr.appendChild(td(s.server));
+                tr.appendChild(td(s.errorMessage));
 
                 tableBody.appendChild(tr);
                 count++;
@@ -213,14 +207,11 @@ document.getElementById("fetchBtn").onclick = async () => {
         statusMsg.innerText = "Loaded " + count + " rows";
 
     } catch (err) {
-        statusMsg.innerText = err.message.includes("fetch")
-            ? "Failed to fetch (CORS issue)"
-            : err.message;
+        statusMsg.innerText = err.message;
         console.error(err);
     }
 
-    isLoading = false;
-};
+});
 
 </script>
 
