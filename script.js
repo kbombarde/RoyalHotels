@@ -1,471 +1,179 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js';
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SAP BO Schedule Viewer</title>
+</head>
+<body>
 
-// ========================
-const TRACK_LENGTH = 30;
-const TRACK_COUNT = 10;
+<h2>SAP BO Schedule Viewer</h2>
 
-let SPEED = 20;
-let LEVEL = 1;
+<table>
+<tr><td>Logon Token:</td><td><input type="text" id="token" size="80"></td></tr>
+<tr><td>Parent Folder ID:</td><td><input type="text" id="parentId"></td></tr>
+<tr><td>Owner:</td><td><input type="text" id="owner"></td></tr>
+<tr><td>Status:</td><td><input type="text" id="status"></td></tr>
+<tr><td>Object Type:</td><td><input type="text" id="type"></td></tr>
 
-// ========================
-const scoreEl = document.getElementById('score');
-const comboEl = document.getElementById('combo');
-const menu = document.getElementById('menu');
+<tr><td>Completion Start:</td><td><input type="datetime-local" id="compStart"></td></tr>
+<tr><td>Completion End:</td><td><input type="datetime-local" id="compEnd"></td></tr>
 
-// ========================
-// SOUND
-// ========================
-const sounds = {
-  coin: new Audio('./assets/sounds/coin.mp3'),
-  jump: new Audio('./assets/sounds/jump.mp3'),
-  duck: new Audio('./assets/sounds/duck.mp3'),
-  lane: new Audio('./assets/sounds/swish.mp3')
-};
+<tr><td>Next Run Start:</td><td><input type="datetime-local" id="nextStart"></td></tr>
+<tr><td>Next Run End:</td><td><input type="datetime-local" id="nextEnd"></td></tr>
+</table>
 
-let audioUnlocked = false;
+<br>
+<button onclick="fetchData()">Fetch Data</button>
 
-function unlockAudio(){
-  if(audioUnlocked) return;
-  Object.values(sounds).forEach(s=>{
-    s.play().then(()=>s.pause()).catch(()=>{});
-  });
-  audioUnlocked = true;
+<p id="statusMsg"></p>
+
+<br>
+
+<table border="1" id="resultTable" cellspacing="0" cellpadding="5">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Location</th>
+            <th>Owner</th>
+            <th>Completion Time</th>
+            <th>Next Run Time</th>
+            <th>Creation Time</th>
+            <th>Start Time</th>
+            <th>End Time</th>
+            <th>Expiry</th>
+            <th>Server</th>
+            <th>Error</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+function toDate(val) {
+    return val ? new Date(val) : null;
 }
 
-function playSound(name){
-  if(!audioUnlocked) return;
-  const s = sounds[name].cloneNode();
-  s.volume = 0.5;
-  s.play().catch(()=>{});
+function inRange(date, start, end) {
+    if (!date) return true;
+    if (start && date < start) return false;
+    if (end && date > end) return false;
+    return true;
 }
 
-// ========================
-// TEXTURES
-// ========================
-const loader = new THREE.TextureLoader();
+async function fetchData() {
 
-const roadTex = loader.load('./assets/textures/city/road.png');
-const buildingTex = loader.load('./assets/textures/city/building.png');
-const sidewalkTex = loader.load('./assets/textures/city/sidewalk.png');
-const carTex = loader.load('./assets/textures/city/car.png');
-const poleTex = loader.load('./assets/textures/city/pole.png');
+    const token = document.getElementById("token").value.trim();
+    const parentId = document.getElementById("parentId").value.trim();
+    const owner = document.getElementById("owner").value.trim();
+    const statusFilter = document.getElementById("status").value.trim();
+    const type = document.getElementById("type").value.trim();
 
-const coinTex = loader.load('./assets/textures/coin.png');
-const barricadeTex = loader.load('./assets/textures/barricade.png');
-const barTex = loader.load('./assets/textures/bar.png');
-const barrelTex = loader.load('./assets/textures/barrel.png');
+    const compStart = toDate(document.getElementById("compStart").value);
+    const compEnd = toDate(document.getElementById("compEnd").value);
+    const nextStart = toDate(document.getElementById("nextStart").value);
+    const nextEnd = toDate(document.getElementById("nextEnd").value);
 
-[roadTex, buildingTex, sidewalkTex].forEach(t=>{
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-});
+    const baseUrl = "http://YOUR_BO_SERVER:6405/biprws/v1";
 
-// ========================
-// SCENE 🌙 NIGHT MODE
-// ========================
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0f1f);
-scene.fog = new THREE.Fog(0x0a0f1f, 20, 150);
+    const tableBody = document.querySelector("#resultTable tbody");
+    const statusMsg = document.getElementById("statusMsg");
 
-// ========================
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+    tableBody.innerHTML = "";
+    statusMsg.innerText = "Loading...";
 
-const renderer = new THREE.WebGLRenderer({
-  canvas: document.getElementById('game'),
-  antialias: true
-});
-renderer.setSize(innerWidth, innerHeight);
-
-// ========================
-// LIGHTING (NIGHT)
-// ========================
-scene.add(new THREE.AmbientLight(0x222244, 0.8));
-
-const moonLight = new THREE.DirectionalLight(0x8899ff, 0.6);
-moonLight.position.set(5,10,5);
-scene.add(moonLight);
-
-// ========================
-// PLAYER
-// ========================
-let lane = 0;
-let y = 1.5;
-let velocityY = 0;
-
-let isJumping = false;
-let isDucking = false;
-
-let score = 0;
-let combo = 1;
-let comboTimer = 0;
-let gameOver = true;
-
-let bobTime = 0;
-let landingImpact = 0;
-
-// ========================
-// TRACK + CITY
-// ========================
-const track = [];
-
-function createTrack(z){
-  const g = new THREE.Group();
-
-  // ROAD
-  roadTex.repeat.set(1,4);
-
-  const road = new THREE.Mesh(
-    new THREE.BoxGeometry(12,0.2,TRACK_LENGTH),
-    new THREE.MeshStandardMaterial({map:roadTex})
-  );
-  road.position.set(0,0,z);
-  g.add(road);
-
-  // LANE LINES
-  [-2,0,2].forEach(x=>{
-    const line = new THREE.Mesh(
-      new THREE.BoxGeometry(0.15,0.05,TRACK_LENGTH),
-      new THREE.MeshBasicMaterial({color:0xffffff})
-    );
-    line.position.set(x,0.11,z);
-    g.add(line);
-  });
-
-  // SIDEWALK
-  sidewalkTex.repeat.set(1,4);
-
-  [-6,6].forEach(x=>{
-    const sidewalk = new THREE.Mesh(
-      new THREE.BoxGeometry(2,0.2,TRACK_LENGTH),
-      new THREE.MeshStandardMaterial({map:sidewalkTex})
-    );
-    sidewalk.position.set(x,0,z);
-    g.add(sidewalk);
-  });
-
-  // 🏢 BUILDINGS WITH GLOW WINDOWS
-  for(let i=0;i<4;i++){
-    const h = 4 + Math.random()*6;
-
-    const mat = new THREE.MeshStandardMaterial({
-      map: buildingTex,
-      emissive: new THREE.Color(0xffffcc),
-      emissiveIntensity: 0.4
-    });
-
-    const b = new THREE.Mesh(
-      new THREE.BoxGeometry(2,h,2),
-      mat
-    );
-
-    b.position.set(
-      Math.random()<0.5 ? -9 : 9,
-      h/2,
-      z + (Math.random()*TRACK_LENGTH - TRACK_LENGTH/2)
-    );
-
-    g.add(b);
-  }
-
-  // 💡 STREET LIGHTS (GLOW)
-  for(let i=0;i<2;i++){
-    const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05,0.05,3),
-      new THREE.MeshStandardMaterial({map:poleTex})
-    );
-
-    const light = new THREE.Mesh(
-      new THREE.SphereGeometry(0.2,6,6),
-      new THREE.MeshBasicMaterial({color:0xffffaa})
-    );
-
-    const glow = new THREE.PointLight(0xffffaa, 1, 10);
-
-    pole.position.set(-5,1.5,z + (i*TRACK_LENGTH/2 - TRACK_LENGTH/4));
-    light.position.y = 1.5;
-    glow.position.y = 1.5;
-
-    pole.add(light);
-    pole.add(glow);
-
-    g.add(pole);
-  }
-
-  // 🚗 CARS
-  for(let i=0;i<2;i++){
-    const car = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5,0.7,3),
-      new THREE.MeshStandardMaterial({map:carTex})
-    );
-
-    car.position.set(
-      Math.random()<0.5 ? -5 : 5,
-      0.4,
-      z + (Math.random()*TRACK_LENGTH - TRACK_LENGTH/2)
-    );
-
-    g.add(car);
-  }
-
-  scene.add(g);
-  return g;
-}
-
-for(let i=0;i<TRACK_COUNT;i++){
-  track.push(createTrack(-i*TRACK_LENGTH));
-}
-
-// ========================
-const coins = [];
-const obstacles = [];
-
-// ========================
-function spawnCoin(){
-  const x = (LEVEL===1)?0:[-2,0,2][Math.random()*3|0];
-
-  const c = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.8,0.8),
-    new THREE.MeshBasicMaterial({map:coinTex,transparent:true})
-  );
-
-  c.position.set(x,1.5,-60);
-  scene.add(c);
-  coins.push(c);
-}
-
-// ========================
-function spawnObstacle(){
-
-  if(LEVEL===1) return;
-
-  if(LEVEL===2){
-    [-2,0,2].forEach(x=>createObstacle(x,'jump'));
-    return;
-  }
-
-  if(LEVEL===3){
-    if(Math.random()<0.7){
-      [-2,0,2].forEach(x=>createObstacle(x,'duck'));
-    } else {
-      createObstacle(0,'jump');
-    }
-    return;
-  }
-
-  if(LEVEL===4){
-    const lanes=[-2,0,2];
-    const open=Math.floor(Math.random()*3);
-    lanes.forEach((x,i)=>{
-      if(i!==open) createObstacle(x,'side');
-    });
-    return;
-  }
-
-  const types=['jump','duck','side'];
-  createObstacle([-2,0,2][Math.random()*3|0],types[Math.random()*3|0]);
-}
-
-// ========================
-function createObstacle(x,type){
-
-  let mesh;
-
-  if(type==='jump'){
-    mesh=new THREE.Mesh(
-      new THREE.PlaneGeometry(2,1.5),
-      new THREE.MeshBasicMaterial({map:barricadeTex,transparent:true})
-    );
-    mesh.position.set(x,1,-60);
-  }
-
-  if(type==='duck'){
-    mesh=new THREE.Mesh(
-      new THREE.PlaneGeometry(2.5,1),
-      new THREE.MeshBasicMaterial({map:barTex,transparent:true})
-    );
-    mesh.position.set(x,2,-60);
-  }
-
-  if(type==='side'){
-    mesh=new THREE.Mesh(
-      new THREE.PlaneGeometry(1.2,1.2),
-      new THREE.MeshBasicMaterial({map:barrelTex,transparent:true})
-    );
-    mesh.position.set(x,0.8,-60);
-  }
-
-  mesh.userData.type = type;
-
-  scene.add(mesh);
-  obstacles.push(mesh);
-}
-
-// ========================
-// CONTROLS
-// ========================
-window.addEventListener('keydown',e=>{
-  unlockAudio();
-
-  if(gameOver) return;
-
-  if(e.key==='ArrowLeft'){ lane=Math.max(-1,lane-1); playSound('lane'); }
-  if(e.key==='ArrowRight'){ lane=Math.min(1,lane+1); playSound('lane'); }
-
-  if(e.key==='ArrowUp' && !isJumping){
-    velocityY=9;
-    isJumping=true;
-    playSound('jump');
-  }
-
-  if(e.key==='ArrowDown'){
-    isDucking=true;
-    playSound('duck');
-    setTimeout(()=>isDucking=false,400);
-  }
-});
-
-// ========================
-window.startGame=()=>{
-  LEVEL=parseInt(document.getElementById('level').value);
-  menu.style.display='none';
-
-  score=0;
-  combo=1;
-  gameOver=false;
-
-  SPEED = 20 + (LEVEL*2);
-};
-
-// ========================
-const clock=new THREE.Clock();
-let coinTimer=0, obstacleTimer=0;
-
-// ========================
-function animate(){
-  requestAnimationFrame(animate);
-  const delta=clock.getDelta();
-
-  if(!gameOver){
-
-    comboTimer-=delta;
-    if(comboTimer<=0){
-      combo=1;
-      comboEl.style.opacity=0;
+    if (!token || !parentId) {
+        alert("Token and Parent Folder ID are required");
+        return;
     }
 
-    velocityY -= 28*delta;
-    y += velocityY*delta;
+    let query = `
+        SELECT SI_ID, SI_NAME, SI_OWNER, SI_PARENTID, SI_CREATION_TIME, SI_KIND
+        FROM CI_INFOOBJECTS
+        WHERE SI_PARENTID=${parentId}
+    `;
 
-    if(y<=1.5){
-      if(isJumping) landingImpact=0.25;
-      y=1.5;
-      velocityY=0;
-      isJumping=false;
+    if (owner) query += ` AND SI_OWNER='${owner}'`;
+    if (type) query += ` AND SI_KIND='${type}'`;
+
+    try {
+
+        const cmsRes = await fetch(`${baseUrl}/cmsquery?pagesize=9999`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-SAP-LogonToken": token
+            },
+            body: JSON.stringify({ query: query })
+        });
+
+        if (!cmsRes.ok) throw new Error("CMS query failed");
+
+        const cmsData = await cmsRes.json();
+        const objects = cmsData.entries || [];
+
+        let count = 0;
+
+        for (let obj of objects) {
+
+            try {
+                const schedRes = await fetch(`${baseUrl}/documents/${obj.SI_ID}/schedules`, {
+                    headers: { "X-SAP-LogonToken": token }
+                });
+
+                if (!schedRes.ok) continue;
+
+                const schedData = await schedRes.json();
+                const schedules = schedData.entries || [];
+
+                for (let sched of schedules) {
+
+                    const compTime = sched.endTime ? new Date(sched.endTime) : null;
+                    const nextTime = sched.nextRunTime ? new Date(sched.nextRunTime) : null;
+
+                    if (!inRange(compTime, compStart, compEnd)) continue;
+                    if (!inRange(nextTime, nextStart, nextEnd)) continue;
+                    if (statusFilter && sched.status !== statusFilter) continue;
+
+                    const tr = document.createElement("tr");
+
+                    function td(val) {
+                        let cell = document.createElement("td");
+                        cell.innerText = val || "";
+                        return cell;
+                    }
+
+                    tr.appendChild(td(obj.SI_NAME));
+                    tr.appendChild(td(obj.SI_KIND));
+                    tr.appendChild(td(sched.status));
+                    tr.appendChild(td(obj.SI_PARENTID));
+                    tr.appendChild(td(obj.SI_OWNER));
+                    tr.appendChild(td(sched.endTime));
+                    tr.appendChild(td(sched.nextRunTime));
+                    tr.appendChild(td(obj.SI_CREATION_TIME));
+                    tr.appendChild(td(sched.startTime));
+                    tr.appendChild(td(sched.endTime));
+                    tr.appendChild(td(sched.expiryTime));
+                    tr.appendChild(td(sched.server));
+                    tr.appendChild(td(sched.errorMessage));
+
+                    tableBody.appendChild(tr);
+                    count++;
+                }
+
+            } catch (e) {
+                console.log("Error for doc:", obj.SI_ID);
+            }
+        }
+
+        statusMsg.innerText = "Loaded " + count + " rows";
+
+    } catch (err) {
+        statusMsg.innerText = "Error: " + err.message;
+        console.error(err);
     }
-
-    if(landingImpact>0){
-      landingImpact -= delta*3;
-    }
-
-    bobTime+=delta*10;
-    const bob=Math.sin(bobTime)*0.1;
-
-    const duckOffset = isDucking ? -0.6 : 0;
-    const impactOffset = Math.max(landingImpact,0);
-
-    camera.position.set(
-      lane*2,
-      y + bob + duckOffset - impactOffset,
-      5
-    );
-
-    camera.lookAt(
-      camera.position.x,
-      camera.position.y - (isDucking ? 0.3 : 0),
-      -20
-    );
-
-    let farZ=Infinity;
-
-    track.forEach(t=>{
-      t.position.z+=SPEED*delta;
-      if(t.position.z<farZ) farZ=t.position.z;
-    });
-
-    track.forEach(t=>{
-      if(t.position.z>TRACK_LENGTH){
-        t.position.z=farZ-TRACK_LENGTH;
-      }
-    });
-
-    coinTimer+=delta;
-    if(coinTimer>0.6){
-      spawnCoin();
-      coinTimer=0;
-    }
-
-    obstacleTimer+=delta;
-    let baseRate=1.2-(LEVEL*0.1);
-    if(baseRate<0.5) baseRate=0.5;
-
-    if(obstacleTimer>baseRate){
-      spawnObstacle();
-      obstacleTimer=0;
-    }
-
-    coins.forEach((c,i)=>{
-      c.lookAt(camera.position);
-      c.position.z+=SPEED*delta;
-
-      if(Math.abs(c.position.z-camera.position.z)<1 &&
-         Math.abs(c.position.x-camera.position.x)<1){
-
-        scene.remove(c);
-        coins.splice(i,1);
-
-        playSound('coin');
-
-        combo=Math.min(combo+1,5);
-        comboTimer=2;
-
-        score+=10*combo;
-        scoreEl.innerText=score;
-
-        comboEl.innerText='x'+combo;
-        comboEl.style.opacity=1;
-      }
-
-      if(c.position.z>10){
-        scene.remove(c);
-        coins.splice(i,1);
-      }
-    });
-
-    obstacles.forEach((o,i)=>{
-      o.lookAt(camera.position);
-      o.position.z+=SPEED*delta;
-
-      const closeZ=Math.abs(o.position.z-camera.position.z)<1;
-      const sameLane=Math.abs(o.position.x-camera.position.x)<1;
-
-      if(closeZ && sameLane){
-        const type=o.userData.type;
-
-        if(type==='jump' && (!isJumping || y<=1.6)) gameOver=true;
-        if(type==='duck' && !isDucking) gameOver=true;
-        if(type==='side') gameOver=true;
-
-        scene.remove(o);
-        obstacles.splice(i,1);
-      }
-
-      if(o.position.z>10){
-        scene.remove(o);
-        obstacles.splice(i,1);
-      }
-    });
-  }
-
-  renderer.render(scene,camera);
 }
+</script>
 
-animate();
+</body>
+</html>
