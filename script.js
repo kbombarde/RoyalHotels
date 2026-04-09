@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SAP BO Final Working</title>
+    <title>SAP BO Max Depth</title>
 </head>
 <body>
 
-<h3>SAP BO Schedule Data</h3>
+<h3>SAP BO Recursive Max Depth</h3>
 
 Token:
 <input type="text" id="token" size="80"><br><br>
@@ -44,7 +44,6 @@ Parent Folder CUID:
 
 const baseUrl = "http://YOUR_BO_SERVER:6405/biprws/v1";
 
-// Prevent refresh
 document.addEventListener("keydown", e => {
     if (e.key === "Enter") e.preventDefault();
 });
@@ -79,24 +78,27 @@ async function parse(res) {
     }
 }
 
-// 🔥 SAFE FIELD EXTRACTOR (fix empty cells)
+// 🔥 SAFE VALUE EXTRACTOR
 function getVal(obj, key) {
     return obj[key] ||
-           obj[key?.toUpperCase()] ||
+           obj[key.toUpperCase()] ||
            obj?.properties?.[key]?.value ||
-           obj?.properties?.[key?.toUpperCase()]?.value ||
+           obj?.properties?.[key.toUpperCase()]?.value ||
+           obj?.["@attributes"]?.[key] ||
            "";
 }
 
-// 🚀 PARALLEL BFS FOLDER FETCH (FAST + CORRECT)
-async function getAllCuids(root, token) {
+// 🔥 TRUE MAX DEPTH BFS (IMPORTANT FIX)
+async function getAllCuidsMaxDepth(root, token) {
 
-    let result = new Set([root]);
+    let visited = new Set();
     let queue = [root];
+
+    visited.add(root);
 
     const CONCURRENCY = 5;
 
-    while (queue.length) {
+    while (queue.length > 0) {
 
         let batch = queue.splice(0, CONCURRENCY);
 
@@ -112,22 +114,24 @@ async function getAllCuids(root, token) {
         ));
 
         responses.forEach(data => {
+
             if (!data) return;
 
             const children = data.entries || data.feed?.entry || [];
 
-            children.forEach(c => {
-                const cuid = getVal(c, "cuid");
+            children.forEach(child => {
 
-                if (cuid && !result.has(cuid)) {
-                    result.add(cuid);
-                    queue.push(cuid);
+                const childCuid = getVal(child, "cuid");
+
+                if (childCuid && !visited.has(childCuid)) {
+                    visited.add(childCuid);
+                    queue.push(childCuid);
                 }
             });
         });
     }
 
-    return Array.from(result);
+    return Array.from(visited);
 }
 
 // 🚀 RUN QUERY
@@ -148,11 +152,11 @@ document.getElementById("runBtn").addEventListener("click", async () => {
 
     try {
 
-        status.innerText = "Fetching folder tree...";
+        status.innerText = "🔍 Traversing folder tree (max depth)...";
 
-        const cuids = await getAllCuids(root, token);
+        const cuids = await getAllCuidsMaxDepth(root, token);
 
-        status.innerText = "Folders: " + cuids.length;
+        status.innerText = "📂 Total folders found: " + cuids.length;
 
         const query = `
 SELECT si_id, si_name, si_kind, si_schedule_status, si_parent_folder_cuid,
@@ -163,7 +167,7 @@ WHERE si_instance=1 AND si_parent_folder_cuid IN (${cuids.map(c=>`'${c}'`).join(
 
         queryBox.innerText = query;
 
-        status.innerText = "Running query...";
+        status.innerText = "⚡ Running query...";
 
         const res = await fetch(`${baseUrl}/cmsquery?pagesize=9999`, {
             method: "POST",
@@ -178,7 +182,7 @@ WHERE si_instance=1 AND si_parent_folder_cuid IN (${cuids.map(c=>`'${c}'`).join(
         const data = await parse(res);
         const rows = data.entries || data.feed?.entry || [];
 
-        status.innerText = "Rendering...";
+        status.innerText = "📊 Rendering results...";
 
         rows.forEach(r => {
 
@@ -204,10 +208,10 @@ WHERE si_instance=1 AND si_parent_folder_cuid IN (${cuids.map(c=>`'${c}'`).join(
             tbody.appendChild(tr);
         });
 
-        status.innerText = "Loaded " + rows.length + " rows";
+        status.innerText = "✅ Loaded " + rows.length + " rows";
 
     } catch (e) {
-        status.innerText = e.message;
+        status.innerText = "❌ " + e.message;
     }
 
     loader.style.display = "none";
