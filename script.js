@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SAP BO Schedule Viewer</title>
+    <title>SAP BO Ultra Fast Viewer</title>
 </head>
 <body>
 
-<h2>SAP BO Schedule Viewer</h2>
+<h2>SAP BO Ultra Fast Schedule Viewer ⚡</h2>
 
 <table>
 <tr>
@@ -17,20 +17,10 @@
     <td>Parent Folder:</td>
     <td>
         <select id="parentId">
-            <option value="0">Root Folder</option>
+            <option value="root">Root Folder</option>
         </select>
     </td>
 </tr>
-
-<tr><td>Owner:</td><td><input type="text" id="owner"></td></tr>
-<tr><td>Status:</td><td><input type="text" id="status"></td></tr>
-<tr><td>Object Type:</td><td><input type="text" id="type"></td></tr>
-
-<tr><td>Completion Start:</td><td><input type="datetime-local" id="compStart"></td></tr>
-<tr><td>Completion End:</td><td><input type="datetime-local" id="compEnd"></td></tr>
-
-<tr><td>Next Run Start:</td><td><input type="datetime-local" id="nextStart"></td></tr>
-<tr><td>Next Run End:</td><td><input type="datetime-local" id="nextEnd"></td></tr>
 </table>
 
 <br>
@@ -38,14 +28,25 @@
 
 <p id="statusMsg" style="white-space: pre-wrap;"></p>
 
+<div id="loader" style="display:none;">
+    <div style="width:30px;height:30px;border:5px solid #ccc;border-top:5px solid black;border-radius:50%;animation:spin 1s linear infinite;"></div>
+</div>
+
+<style>
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+
 <br>
 
 <table border="1" id="resultTable">
 <thead>
 <tr>
-<th>Name</th><th>Type</th><th>Status</th><th>Location</th><th>Owner</th>
-<th>Completion Time</th><th>Next Run Time</th><th>Creation Time</th>
-<th>Start Time</th><th>End Time</th><th>Expiry</th><th>Server</th><th>Error</th>
+<th>Name</th><th>Type</th><th>Status</th><th>Folder</th>
+<th>Owner</th><th>Start</th><th>End</th>
+<th>Server</th><th>Error</th>
 </tr>
 </thead>
 <tbody></tbody>
@@ -53,76 +54,60 @@
 
 <script>
 
-// 🚫 BLOCK REFRESH
-document.addEventListener("submit", e => e.preventDefault());
 document.addEventListener("keydown", e => {
     if (e.key === "Enter") e.preventDefault();
 });
 
 const baseUrl = "http://YOUR_BO_SERVER:6405/biprws/v1";
-let foldersLoaded = false;
+
+let folderMap = {}; // parent → children
+let allFolders = []; // flat list
 
 // 🔄 XML → JSON
 function xmlToJson(xml) {
     let obj = {};
-
-    if (xml.nodeType === 1 && xml.attributes.length > 0) {
-        obj["@attributes"] = {};
-        for (let j = 0; j < xml.attributes.length; j++) {
-            let attr = xml.attributes.item(j);
-            obj["@attributes"][attr.nodeName] = attr.nodeValue;
-        }
-    }
-
     if (xml.nodeType === 3) return xml.nodeValue.trim();
 
     if (xml.hasChildNodes()) {
         for (let i = 0; i < xml.childNodes.length; i++) {
-            let item = xml.childNodes.item(i);
-            let nodeName = item.nodeName;
+            let item = xml.childNodes[i];
+            let val = xmlToJson(item);
+            if (!val) continue;
 
-            let value = xmlToJson(item);
-            if (!value) continue;
-
-            if (!obj[nodeName]) obj[nodeName] = value;
+            if (!obj[item.nodeName]) obj[item.nodeName] = val;
             else {
-                if (!Array.isArray(obj[nodeName])) obj[nodeName] = [obj[nodeName]];
-                obj[nodeName].push(value);
+                if (!Array.isArray(obj[item.nodeName]))
+                    obj[item.nodeName] = [obj[item.nodeName]];
+                obj[item.nodeName].push(val);
             }
         }
     }
     return obj;
 }
 
-// 🔄 Parse response
 async function parseResponse(res) {
     const text = await res.text();
-
     if (!res.ok) throw new Error(text);
 
-    try {
-        return JSON.parse(text);
-    } catch {
+    try { return JSON.parse(text); }
+    catch {
         const xml = new DOMParser().parseFromString(text, "text/xml");
         return xmlToJson(xml);
     }
 }
 
-// 📂 LOAD FOLDERS
+// 🚀 LOAD ALL FOLDERS ONCE (ULTRA FAST BASE)
 document.getElementById("token").addEventListener("blur", async function() {
 
-    if (foldersLoaded) return;
-
     const token = document.getElementById("token").value.trim();
-    const statusMsg = document.getElementById("statusMsg");
-
     if (!token) return;
 
-    statusMsg.innerText = "Loading folders...";
+    const statusMsg = document.getElementById("statusMsg");
+    statusMsg.innerText = "Loading ALL folders once...";
 
     try {
 
-        const res = await fetch(`${baseUrl}/folders`, {
+        const res = await fetch(`${baseUrl}/folders?pagesize=9999`, {
             headers: {
                 "X-SAP-LogonToken": token,
                 "Accept": "application/json"
@@ -130,95 +115,96 @@ document.getElementById("token").addEventListener("blur", async function() {
         });
 
         const data = await parseResponse(res);
-
-        const dropdown = document.getElementById("parentId");
-        dropdown.innerHTML = '<option value="0">Root Folder</option>';
-
         const folders = data.entries || data.feed?.entry || [];
 
+        folderMap = {};
+        allFolders = folders;
+
+        const dropdown = document.getElementById("parentId");
+        dropdown.innerHTML = '<option value="root">Root Folder</option>';
+
         folders.forEach(f => {
-            const id = f.id || f["@attributes"]?.id || f.SI_ID;
-            const name = f.name || f.title || f.SI_NAME;
 
-            if (!id || !name) return;
+            const cuid = f.cuid || f["@attributes"]?.cuid;
+            const parent = f.parentid || f.si_parentid;
+            const name = f.name || f.title;
 
+            if (!cuid) return;
+
+            // build tree
+            if (!folderMap[parent]) folderMap[parent] = [];
+            folderMap[parent].push(cuid);
+
+            // dropdown
             let opt = document.createElement("option");
-            opt.value = id;
+            opt.value = cuid;
             opt.text = name;
             dropdown.appendChild(opt);
         });
 
-        statusMsg.innerText = "Folders loaded";
-        foldersLoaded = true;
+        statusMsg.innerText = "Folders cached: " + folders.length;
 
     } catch (err) {
-        statusMsg.innerText = "Folder Error:\n" + err.message;
+        statusMsg.innerText = err.message;
     }
 });
 
-// 🔥 GET ALL CHILD FOLDERS (RECURSIVE)
-async function getAllChildFolders(parentId, token, allIds = new Set()) {
+// ⚡ INSTANT TREE TRAVERSAL (NO API CALL)
+function getAllChildCuidsFast(root) {
 
-    allIds.add(parentId);
+    let result = new Set([root]);
+    let stack = [root];
 
-    try {
-        const res = await fetch(`${baseUrl}/folders/${parentId}/children`, {
-            headers: {
-                "X-SAP-LogonToken": token,
-                "Accept": "application/json"
+    while (stack.length) {
+        let current = stack.pop();
+        let children = folderMap[current] || [];
+
+        children.forEach(c => {
+            if (!result.has(c)) {
+                result.add(c);
+                stack.push(c);
             }
         });
-
-        const data = await parseResponse(res);
-
-        const children = data.entries || data.feed?.entry || [];
-
-        for (let child of children) {
-
-            const childId = child.id || child["@attributes"]?.id;
-
-            if (childId && !allIds.has(childId)) {
-                await getAllChildFolders(childId, token, allIds);
-            }
-        }
-
-    } catch (err) {
-        console.log("Child fetch error:", parentId);
     }
 
-    return Array.from(allIds);
+    return Array.from(result);
 }
 
 // 🚀 FETCH DATA
 document.getElementById("fetchBtn").addEventListener("click", async function() {
 
+    const token = document.getElementById("token").value.trim();
+    const parent = document.getElementById("parentId").value;
+
     const statusMsg = document.getElementById("statusMsg");
     const tableBody = document.querySelector("#resultTable tbody");
+    const loader = document.getElementById("loader");
 
-    statusMsg.innerText = "Loading...";
+    if (!token) return;
+
     tableBody.innerHTML = "";
+    loader.style.display = "block";
 
     try {
 
-        const token = document.getElementById("token").value.trim();
-        const parentId = document.getElementById("parentId").value;
+        statusMsg.innerText = "Resolving folder tree (instant)...";
 
-        if (!token) throw new Error("Token required");
+        const cuids = parent === "root"
+            ? allFolders.map(f => f.cuid)
+            : getAllChildCuidsFast(parent);
 
-        // 🔥 GET ALL FOLDER IDS
-        const folderIds = await getAllChildFolders(parentId, token);
+        statusMsg.innerText = "Folders: " + cuids.length;
 
-        const folderList = folderIds.join(",");
+        const query = `
+SELECT si_id, si_name, si_kind, si_schedule_status, si_parent_folder_cuid,
+si_owner, si_starttime, si_endtime, si_machine_used, si_status_info
+FROM ci_infoobjects, ci_appobjects, ci_systemobjects
+WHERE si_instance=1 AND si_parent_folder_cuid IN (${cuids.map(c=>`'${c}'`).join(",")})
+`;
 
-        statusMsg.innerText = "Folders considered:\n" + folderList;
+        statusMsg.innerText = "Running CMS query...";
 
-        let query = `
-            SELECT SI_ID, SI_NAME, SI_OWNER, SI_PARENT_FOLDER, SI_CREATION_TIME, SI_KIND
-            FROM CI_INFOOBJECTS
-            WHERE SI_PARENT_FOLDER IN (${folderList})
-        `;
-
-        const cmsRes = await fetch(`${baseUrl}/cmsquery?pagesize=9999`, {
+        const res = await fetch(`${baseUrl}/cmsquery?pagesize=9999`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -228,36 +214,18 @@ document.getElementById("fetchBtn").addEventListener("click", async function() {
             body: JSON.stringify({ query })
         });
 
-        const cmsData = await parseResponse(cmsRes);
-        const objects = cmsData.entries || cmsData.feed?.entry || [];
+        const data = await parseResponse(res);
+        const objects = data.entries || data.feed?.entry || [];
 
-        const promises = objects.map(obj => {
+        statusMsg.innerText = "Rendering...";
 
-            const id = obj.SI_ID || obj.id;
+        // ⚡ Chunk rendering (no freeze)
+        let i = 0;
 
-            return fetch(`${baseUrl}/documents/${id}/schedules`, {
-                headers: {
-                    "X-SAP-LogonToken": token,
-                    "Accept": "application/json"
-                }
-            })
-            .then(res => parseResponse(res))
-            .then(data => ({
-                obj,
-                schedules: data.entries || data.feed?.entry || []
-            }))
-            .catch(() => null);
-        });
+        function renderChunk() {
+            let chunk = objects.slice(i, i + 200);
 
-        const results = await Promise.all(promises);
-
-        let count = 0;
-
-        results.forEach(r => {
-            if (!r) return;
-
-            r.schedules.forEach(s => {
-
+            chunk.forEach(obj => {
                 let tr = document.createElement("tr");
 
                 function td(v) {
@@ -266,29 +234,34 @@ document.getElementById("fetchBtn").addEventListener("click", async function() {
                     return c;
                 }
 
-                tr.appendChild(td(r.obj.SI_NAME));
-                tr.appendChild(td(r.obj.SI_KIND));
-                tr.appendChild(td(s.status));
-                tr.appendChild(td(r.obj.SI_PARENT_FOLDER));
-                tr.appendChild(td(r.obj.SI_OWNER));
-                tr.appendChild(td(s.endTime));
-                tr.appendChild(td(s.nextRunTime));
-                tr.appendChild(td(r.obj.SI_CREATION_TIME));
-                tr.appendChild(td(s.startTime));
-                tr.appendChild(td(s.endTime));
-                tr.appendChild(td(s.expiryTime));
-                tr.appendChild(td(s.server));
-                tr.appendChild(td(s.errorMessage));
+                tr.appendChild(td(obj.si_name));
+                tr.appendChild(td(obj.si_kind));
+                tr.appendChild(td(obj.si_schedule_status));
+                tr.appendChild(td(obj.si_parent_folder_cuid));
+                tr.appendChild(td(obj.si_owner));
+                tr.appendChild(td(obj.si_starttime));
+                tr.appendChild(td(obj.si_endtime));
+                tr.appendChild(td(obj.si_machine_used));
+                tr.appendChild(td(obj.si_status_info));
 
                 tableBody.appendChild(tr);
-                count++;
             });
-        });
 
-        statusMsg.innerText = "Loaded " + count + " rows";
+            i += 200;
+
+            if (i < objects.length) {
+                requestAnimationFrame(renderChunk);
+            } else {
+                statusMsg.innerText = "Loaded " + objects.length + " rows ⚡";
+                loader.style.display = "none";
+            }
+        }
+
+        renderChunk();
 
     } catch (err) {
-        statusMsg.innerText = "Error:\n" + err.message;
+        statusMsg.innerText = err.message;
+        loader.style.display = "none";
     }
 });
 
