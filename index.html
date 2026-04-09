@@ -1,30 +1,26 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>SAP BO Flask</title>
-</head>
 <body>
 
-<h3>SAP BO (Flask Backend)</h3>
+<h3>SAP BO Dashboard</h3>
 
-Token:
-<input type="text" id="token" size="80"><br><br>
+Token: <input id="token" size="80"><br><br>
+Folder CUID: <input id="folder"><br><br>
 
-Folder CUID:
-<input type="text" id="folder"><br><br>
-
-<button onclick="runQuery()">Run</button>
+<button onclick="run()">Run</button>
 
 <p id="status"></p>
 
 <h4>Query</h4>
-<pre id="queryBox"></pre>
+<pre id="query"></pre>
 
 <table border="1">
 <thead>
 <tr>
-<th>ID</th><th>Name</th><th>Type</th><th>Status</th>
-<th>Folder</th><th>Owner</th><th>Start</th><th>End</th>
+<th>Name</th><th>Type</th><th>Status</th>
+<th>Owner</th><th>Folder</th>
+<th>Start</th><th>End</th>
+<th>Next Run</th><th>Completion</th>
 <th>Server</th><th>Error</th>
 </tr>
 </thead>
@@ -32,49 +28,45 @@ Folder CUID:
 </table>
 
 <script>
-
-async function runQuery() {
+async function run() {
 
     const token = document.getElementById("token").value;
     const folder = document.getElementById("folder").value;
 
     document.getElementById("status").innerText = "Processing...";
 
-    const res = await fetch("/run-query", {
+    const res = await fetch("/sap-data", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({token, folder})
     });
 
-    const result = await res.json();
+    const data = await res.json();
 
-    document.getElementById("queryBox").innerText = result.query;
-
-    const rows = result.data.entries || [];
+    document.getElementById("query").innerText = data.query;
 
     const tbody = document.getElementById("tbody");
     tbody.innerHTML = "";
 
-    rows.forEach(r => {
-        let tr = "<tr>" +
-            `<td>${r.si_id||""}</td>` +
-            `<td>${r.si_name||""}</td>` +
-            `<td>${r.si_kind||""}</td>` +
-            `<td>${r.si_schedule_status||""}</td>` +
-            `<td>${r.si_parent_folder_cuid||""}</td>` +
-            `<td>${r.si_owner||""}</td>` +
-            `<td>${r.si_starttime||""}</td>` +
-            `<td>${r.si_endtime||""}</td>` +
-            `<td>${r.si_machine_used||""}</td>` +
-            `<td>${r.si_status_info||""}</td>` +
-        "</tr>";
-
-        tbody.innerHTML += tr;
+    data.data.forEach(r => {
+        tbody.innerHTML += `
+        <tr>
+        <td>${r.name||""}</td>
+        <td>${r.type||""}</td>
+        <td>${r.status||""}</td>
+        <td>${r.owner||""}</td>
+        <td>${r.folder||""}</td>
+        <td>${r.start||""}</td>
+        <td>${r.end||""}</td>
+        <td>${r.next_run||""}</td>
+        <td>${r.completion||""}</td>
+        <td>${r.server||""}</td>
+        <td>${r.error||""}</td>
+        </tr>`;
     });
 
-    document.getElementById("status").innerText = "Done";
+    document.getElementById("status").innerText = "Done: " + data.data.length;
 }
-
 </script>
 
 </body>
