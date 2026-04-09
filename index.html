@@ -2,7 +2,7 @@
 <html>
 <body>
 
-<h3>SAP BO Debug Dashboard</h3>
+<h3>SAP BO Final Dashboard</h3>
 
 Token: <input id="token" size="80"><br><br>
 Folder CUID: <input id="folder"><br><br>
@@ -14,20 +14,14 @@ Folder CUID: <input id="folder"><br><br>
 <h4>Query</h4>
 <pre id="query"></pre>
 
-<h4>Raw CMS Response</h4>
-<pre id="cms"></pre>
-
-<h4>Raw Schedule Response</h4>
-<pre id="schedule"></pre>
-
 <table border="1">
 <thead>
 <tr>
-<th>Name</th><th>Type</th><th>Status</th>
-<th>Owner</th><th>Folder</th>
-<th>Start</th><th>End</th>
-<th>Next Run</th><th>Completion</th>
-<th>Server</th><th>Error</th>
+<th>si_id</th><th>si_parentid</th><th>si_name</th>
+<th>si_kind</th><th>status</th>
+<th>owner</th><th>start</th><th>end</th>
+<th>next_run</th><th>completion</th>
+<th>server</th><th>error</th>
 </tr>
 </thead>
 <tbody id="tbody"></tbody>
@@ -50,8 +44,6 @@ async function run() {
     const data = await res.json();
 
     document.getElementById("query").innerText = data.query;
-    document.getElementById("cms").innerText = JSON.stringify(data.cms_raw_response, null, 2);
-    document.getElementById("schedule").innerText = JSON.stringify(data.schedule_api_responses, null, 2);
 
     const tbody = document.getElementById("tbody");
     tbody.innerHTML = "";
@@ -59,21 +51,22 @@ async function run() {
     data.data.forEach(r => {
         tbody.innerHTML += `
         <tr>
-        <td>${r.name||""}</td>
-        <td>${r.type||""}</td>
-        <td>${r.status||""}</td>
-        <td>${r.owner||""}</td>
-        <td>${r.folder||""}</td>
-        <td>${r.start||""}</td>
-        <td>${r.end||""}</td>
-        <td>${r.next_run||""}</td>
-        <td>${r.completion||""}</td>
-        <td>${r.server||""}</td>
-        <td>${r.error||""}</td>
+        <td>${r.si_id}</td>
+        <td>${r.si_parentid}</td>
+        <td>${r.si_name}</td>
+        <td>${r.si_kind}</td>
+        <td>${r.si_schedule_status}</td>
+        <td>${r.si_owner}</td>
+        <td>${r.si_starttime}</td>
+        <td>${r.si_endtime}</td>
+        <td>${r.next_run}</td>
+        <td>${r.completion}</td>
+        <td>${r.si_machine_used}</td>
+        <td>${r.si_status_info}</td>
         </tr>`;
     });
 
-    document.getElementById("status").innerText = "Done";
+    document.getElementById("status").innerText = "Done: " + data.data.length;
 }
 </script>
 
