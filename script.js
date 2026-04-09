@@ -53,7 +53,7 @@
 
 <script>
 
-// 🚫 BLOCK ALL REFRESH BEHAVIOR
+// 🚫 BLOCK REFRESH
 document.addEventListener("submit", e => e.preventDefault());
 document.addEventListener("keydown", e => {
     if (e.key === "Enter") e.preventDefault();
@@ -62,10 +62,58 @@ document.addEventListener("keydown", e => {
 const baseUrl = "http://YOUR_BO_SERVER:6405/biprws/v1";
 let foldersLoaded = false;
 
-// 📂 LOAD FOLDERS WHEN TOKEN FILLED
-document.getElementById("token").addEventListener("blur", loadFolders);
+// 🔄 XML → JSON fallback
+function xmlToJson(xml) {
+    let obj = {};
+    if (xml.nodeType === 1 && xml.attributes.length > 0) {
+        obj["@attributes"] = {};
+        for (let j = 0; j < xml.attributes.length; j++) {
+            let attr = xml.attributes.item(j);
+            obj["@attributes"][attr.nodeName] = attr.nodeValue;
+        }
+    } else if (xml.nodeType === 3) {
+        return xml.nodeValue.trim();
+    }
 
-async function loadFolders() {
+    if (xml.hasChildNodes()) {
+        for (let i = 0; i < xml.childNodes.length; i++) {
+            let item = xml.childNodes.item(i);
+            let nodeName = item.nodeName;
+
+            let value = xmlToJson(item);
+            if (!value) continue;
+
+            if (!obj[nodeName]) {
+                obj[nodeName] = value;
+            } else {
+                if (!Array.isArray(obj[nodeName])) {
+                    obj[nodeName] = [obj[nodeName]];
+                }
+                obj[nodeName].push(value);
+            }
+        }
+    }
+    return obj;
+}
+
+// 🔄 Safe response parser
+async function parseResponse(res) {
+    const text = await res.text();
+
+    if (!res.ok) {
+        throw new Error("Status: " + res.status + "\n" + text);
+    }
+
+    if (text.trim().startsWith("<")) {
+        const xml = new DOMParser().parseFromString(text, "text/xml");
+        return xmlToJson(xml);
+    } else {
+        return JSON.parse(text);
+    }
+}
+
+// 📂 Load folders
+document.getElementById("token").addEventListener("blur", async () => {
 
     if (foldersLoaded) return;
 
@@ -76,48 +124,39 @@ async function loadFolders() {
 
     try {
         const res = await fetch(`${baseUrl}/folders`, {
-            headers: { "X-SAP-LogonToken": token }
+            headers: {
+                "X-SAP-LogonToken": token,
+                "Accept": "application/json"
+            }
         });
 
-        const text = await res.text();
-
-        if (!res.ok) {
-            statusMsg.innerText =
-                "Folder API Error\nStatus: " + res.status + "\nResponse:\n" + text;
-            return;
-        }
-
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch {
-            statusMsg.innerText = "Invalid JSON:\n" + text;
-            return;
-        }
+        const data = await parseResponse(res);
 
         const dropdown = document.getElementById("parentId");
         dropdown.innerHTML = '<option value="">-- Select Folder --</option>';
 
-        (data.entries || []).forEach(f => {
+        const folders = data.entries || data.feed?.entry || [];
+
+        folders.forEach(f => {
+            let id = f.id || f["@attributes"]?.id;
+            let name = f.name || f.title;
+
             let opt = document.createElement("option");
-            opt.value = f.id;
-            opt.text = f.name;
+            opt.value = id;
+            opt.text = name;
             dropdown.appendChild(opt);
         });
 
-        statusMsg.innerText = "Folders loaded: " + (data.entries?.length || 0);
+        statusMsg.innerText = "Folders loaded";
         foldersLoaded = true;
 
     } catch (err) {
-        statusMsg.innerText = "Fetch Failed (CORS?)\n" + err.message;
-        console.error(err);
+        statusMsg.innerText = "Folder Error:\n" + err.message;
     }
-}
+});
 
-// 🚀 FETCH DATA
-document.getElementById("fetchBtn").addEventListener("click", async function(e) {
-
-    e.preventDefault();
+// 🚀 Fetch data
+document.getElementById("fetchBtn").addEventListener("click", async () => {
 
     const statusMsg = document.getElementById("statusMsg");
     const tableBody = document.querySelector("#resultTable tbody");
@@ -132,62 +171,42 @@ document.getElementById("fetchBtn").addEventListener("click", async function(e) 
 
         if (!token || !parentId) throw new Error("Token + Folder required");
 
-        const owner = document.getElementById("owner").value.trim();
-        const statusFilter = document.getElementById("status").value.trim();
-        const type = document.getElementById("type").value.trim();
-
-        const compStart = document.getElementById("compStart").value ? new Date(document.getElementById("compStart").value) : null;
-        const compEnd = document.getElementById("compEnd").value ? new Date(document.getElementById("compEnd").value) : null;
-        const nextStart = document.getElementById("nextStart").value ? new Date(document.getElementById("nextStart").value) : null;
-        const nextEnd = document.getElementById("nextEnd").value ? new Date(document.getElementById("nextEnd").value) : null;
-
-        function inRange(d, s, e) {
-            if (!d) return true;
-            if (s && d < s) return false;
-            if (e && d > e) return false;
-            return true;
-        }
-
         let query = `
             SELECT SI_ID, SI_NAME, SI_OWNER, SI_PARENTID, SI_CREATION_TIME, SI_KIND
             FROM CI_INFOOBJECTS
             WHERE SI_PARENTID=${parentId}
         `;
 
-        if (owner) query += ` AND SI_OWNER='${owner}'`;
-        if (type) query += ` AND SI_KIND='${type}'`;
-
         const cmsRes = await fetch(`${baseUrl}/cmsquery?pagesize=9999`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-SAP-LogonToken": token
+                "X-SAP-LogonToken": token,
+                "Accept": "application/json"
             },
             body: JSON.stringify({ query })
         });
 
-        const cmsText = await cmsRes.text();
+        const cmsData = await parseResponse(cmsRes);
+        const objects = cmsData.entries || cmsData.feed?.entry || [];
 
-        if (!cmsRes.ok) {
-            statusMsg.innerText =
-                "CMS Error\nStatus: " + cmsRes.status + "\nResponse:\n" + cmsText;
-            return;
-        }
+        const promises = objects.map(obj => {
 
-        const cmsData = JSON.parse(cmsText);
-        const objects = cmsData.entries || [];
+            const id = obj.SI_ID || obj.id;
 
-        const promises = objects.map(obj =>
-            fetch(`${baseUrl}/documents/${obj.SI_ID}/schedules`, {
-                headers: { "X-SAP-LogonToken": token }
+            return fetch(`${baseUrl}/documents/${id}/schedules`, {
+                headers: {
+                    "X-SAP-LogonToken": token,
+                    "Accept": "application/json"
+                }
             })
-            .then(async r => {
-                const txt = await r.text();
-                if (!r.ok) return null;
-                return { obj, schedules: JSON.parse(txt).entries || [] };
-            })
-            .catch(() => null)
-        );
+            .then(res => parseResponse(res))
+            .then(data => ({
+                obj,
+                schedules: data.entries || data.feed?.entry || []
+            }))
+            .catch(() => null);
+        });
 
         const results = await Promise.all(promises);
 
@@ -198,14 +217,7 @@ document.getElementById("fetchBtn").addEventListener("click", async function(e) 
 
             r.schedules.forEach(s => {
 
-                const compTime = s.endTime ? new Date(s.endTime) : null;
-                const nextTime = s.nextRunTime ? new Date(s.nextRunTime) : null;
-
-                if (!inRange(compTime, compStart, compEnd)) return;
-                if (!inRange(nextTime, nextStart, nextEnd)) return;
-                if (statusFilter && s.status !== statusFilter) return;
-
-                let tr = document.createElement("tr");
+                const tr = document.createElement("tr");
 
                 function td(v) {
                     let c = document.createElement("td");
@@ -235,11 +247,10 @@ document.getElementById("fetchBtn").addEventListener("click", async function(e) 
         statusMsg.innerText = "Loaded " + count + " rows";
 
     } catch (err) {
-        statusMsg.innerText = err.message;
-        console.error(err);
+        statusMsg.innerText = "Error:\n" + err.message;
     }
-
 });
+
 </script>
 
 </body>
