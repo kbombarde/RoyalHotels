@@ -2,7 +2,7 @@
 <html>
 <body>
 
-<h3>SAP BO Dashboard</h3>
+<h3>SAP BO Debug Dashboard</h3>
 
 Token: <input id="token" size="80"><br><br>
 Folder CUID: <input id="folder"><br><br>
@@ -13,6 +13,12 @@ Folder CUID: <input id="folder"><br><br>
 
 <h4>Query</h4>
 <pre id="query"></pre>
+
+<h4>Raw CMS Response</h4>
+<pre id="cms"></pre>
+
+<h4>Raw Schedule Response</h4>
+<pre id="schedule"></pre>
 
 <table border="1">
 <thead>
@@ -44,6 +50,8 @@ async function run() {
     const data = await res.json();
 
     document.getElementById("query").innerText = data.query;
+    document.getElementById("cms").innerText = JSON.stringify(data.cms_raw_response, null, 2);
+    document.getElementById("schedule").innerText = JSON.stringify(data.schedule_api_responses, null, 2);
 
     const tbody = document.getElementById("tbody");
     tbody.innerHTML = "";
@@ -65,7 +73,7 @@ async function run() {
         </tr>`;
     });
 
-    document.getElementById("status").innerText = "Done: " + data.data.length;
+    document.getElementById("status").innerText = "Done";
 }
 </script>
 
