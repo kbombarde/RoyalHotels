@@ -36,7 +36,7 @@
 <br>
 <button id="fetchBtn">Fetch Data</button>
 
-<p id="statusMsg"></p>
+<p id="statusMsg" style="white-space: pre-wrap;"></p>
 
 <br>
 
@@ -62,16 +62,19 @@ document.addEventListener("keydown", e => {
 const baseUrl = "http://YOUR_BO_SERVER:6405/biprws/v1";
 let foldersLoaded = false;
 
-// 🔄 XML → JSON fallback
+// 🔄 XML → JSON
 function xmlToJson(xml) {
     let obj = {};
+
     if (xml.nodeType === 1 && xml.attributes.length > 0) {
         obj["@attributes"] = {};
         for (let j = 0; j < xml.attributes.length; j++) {
             let attr = xml.attributes.item(j);
             obj["@attributes"][attr.nodeName] = attr.nodeValue;
         }
-    } else if (xml.nodeType === 3) {
+    }
+
+    if (xml.nodeType === 3) {
         return xml.nodeValue.trim();
     }
 
@@ -96,24 +99,8 @@ function xmlToJson(xml) {
     return obj;
 }
 
-// 🔄 Safe response parser
-async function parseResponse(res) {
-    const text = await res.text();
-
-    if (!res.ok) {
-        throw new Error("Status: " + res.status + "\n" + text);
-    }
-
-    if (text.trim().startsWith("<")) {
-        const xml = new DOMParser().parseFromString(text, "text/xml");
-        return xmlToJson(xml);
-    } else {
-        return JSON.parse(text);
-    }
-}
-
-// 📂 Load folders
-document.getElementById("token").addEventListener("blur", async () => {
+// 📂 LOAD FOLDERS (FULL DEBUG)
+document.getElementById("token").addEventListener("blur", async function() {
 
     if (foldersLoaded) return;
 
@@ -122,24 +109,60 @@ document.getElementById("token").addEventListener("blur", async () => {
 
     if (!token) return;
 
+    statusMsg.innerText = "Loading folders...";
+
     try {
+
         const res = await fetch(`${baseUrl}/folders`, {
+            method: "GET",
             headers: {
                 "X-SAP-LogonToken": token,
-                "Accept": "application/json"
+                "Accept": "application/json",
+                "Content-Type": "application/json"
             }
         });
 
-        const data = await parseResponse(res);
+        const raw = await res.text();
+
+        // 🔍 SHOW FULL RESPONSE
+        statusMsg.innerText =
+            "HTTP Status: " + res.status + "\n\nRAW RESPONSE:\n" + raw;
+
+        if (!res.ok) return;
+
+        let data;
+
+        try {
+            data = JSON.parse(raw);
+        } catch {
+            const xml = new DOMParser().parseFromString(raw, "text/xml");
+            data = xmlToJson(xml);
+        }
+
+        console.log("Parsed Folder Data:", data);
 
         const dropdown = document.getElementById("parentId");
         dropdown.innerHTML = '<option value="">-- Select Folder --</option>';
 
-        const folders = data.entries || data.feed?.entry || [];
+        const folders =
+            data.entries ||
+            data.feed?.entry ||
+            data.Folders?.Folder ||
+            [];
 
         folders.forEach(f => {
-            let id = f.id || f["@attributes"]?.id;
-            let name = f.name || f.title;
+
+            const id =
+                f.id ||
+                f["@attributes"]?.id ||
+                f.SI_ID;
+
+            const name =
+                f.name ||
+                f.title ||
+                f.SI_NAME;
+
+            if (!id || !name) return;
 
             let opt = document.createElement("option");
             opt.value = id;
@@ -147,16 +170,19 @@ document.getElementById("token").addEventListener("blur", async () => {
             dropdown.appendChild(opt);
         });
 
-        statusMsg.innerText = "Folders loaded";
+        statusMsg.innerText += "\n\nFolders Parsed: " + dropdown.length;
+
         foldersLoaded = true;
 
     } catch (err) {
-        statusMsg.innerText = "Folder Error:\n" + err.message;
+        statusMsg.innerText =
+            "FETCH FAILED\n\n" + err.message + "\n\nLikely CORS issue";
+        console.error(err);
     }
 });
 
-// 🚀 Fetch data
-document.getElementById("fetchBtn").addEventListener("click", async () => {
+// 🚀 FETCH DATA
+document.getElementById("fetchBtn").addEventListener("click", async function() {
 
     const statusMsg = document.getElementById("statusMsg");
     const tableBody = document.querySelector("#resultTable tbody");
@@ -171,12 +197,6 @@ document.getElementById("fetchBtn").addEventListener("click", async () => {
 
         if (!token || !parentId) throw new Error("Token + Folder required");
 
-        let query = `
-            SELECT SI_ID, SI_NAME, SI_OWNER, SI_PARENTID, SI_CREATION_TIME, SI_KIND
-            FROM CI_INFOOBJECTS
-            WHERE SI_PARENTID=${parentId}
-        `;
-
         const cmsRes = await fetch(`${baseUrl}/cmsquery?pagesize=9999`, {
             method: "POST",
             headers: {
@@ -184,10 +204,27 @@ document.getElementById("fetchBtn").addEventListener("click", async () => {
                 "X-SAP-LogonToken": token,
                 "Accept": "application/json"
             },
-            body: JSON.stringify({ query })
+            body: JSON.stringify({
+                query: `SELECT SI_ID, SI_NAME, SI_OWNER, SI_PARENTID, SI_CREATION_TIME, SI_KIND FROM CI_INFOOBJECTS WHERE SI_PARENTID=${parentId}`
+            })
         });
 
-        const cmsData = await parseResponse(cmsRes);
+        const cmsText = await cmsRes.text();
+
+        if (!cmsRes.ok) {
+            statusMsg.innerText = cmsText;
+            return;
+        }
+
+        let cmsData;
+
+        try {
+            cmsData = JSON.parse(cmsText);
+        } catch {
+            const xml = new DOMParser().parseFromString(cmsText, "text/xml");
+            cmsData = xmlToJson(xml);
+        }
+
         const objects = cmsData.entries || cmsData.feed?.entry || [];
 
         const promises = objects.map(obj => {
@@ -200,11 +237,21 @@ document.getElementById("fetchBtn").addEventListener("click", async () => {
                     "Accept": "application/json"
                 }
             })
-            .then(res => parseResponse(res))
-            .then(data => ({
-                obj,
-                schedules: data.entries || data.feed?.entry || []
-            }))
+            .then(r => r.text())
+            .then(txt => {
+                let data;
+                try {
+                    data = JSON.parse(txt);
+                } catch {
+                    const xml = new DOMParser().parseFromString(txt, "text/xml");
+                    data = xmlToJson(xml);
+                }
+
+                return {
+                    obj,
+                    schedules: data.entries || data.feed?.entry || []
+                };
+            })
             .catch(() => null);
         });
 
@@ -217,7 +264,7 @@ document.getElementById("fetchBtn").addEventListener("click", async () => {
 
             r.schedules.forEach(s => {
 
-                const tr = document.createElement("tr");
+                let tr = document.createElement("tr");
 
                 function td(v) {
                     let c = document.createElement("td");
