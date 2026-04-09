@@ -6,12 +6,15 @@ app = Flask(__name__)
 
 BASE_URL = "http://YOUR_BO_SERVER:6405/biprws/v1"
 
-def headers(token):
+def build_headers(token):
     return {
         "X-SAP-LogonToken": token,
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
+
+def mask_token(token):
+    return token[:5] + "..." if token else ""
 
 # ---------- FOLDER RECURSION ----------
 def get_all_child_cuids(root, token):
@@ -30,7 +33,7 @@ def get_all_child_cuids(root, token):
                 executor.submit(
                     requests.get,
                     f"{BASE_URL}/folders/{c}/children?type=Folder",
-                    headers=headers(token),
+                    headers=build_headers(token),
                     timeout=10
                 )
                 for c in batch
@@ -40,7 +43,11 @@ def get_all_child_cuids(root, token):
                 try:
                     res = f.result()
                     data = res.json()
-                    responses.append(data)
+                    responses.append({
+                        "url": res.url,
+                        "status": res.status_code,
+                        "response": data
+                    })
 
                     for child in data.get("entries", []):
                         cuid = child.get("cuid")
@@ -48,8 +55,8 @@ def get_all_child_cuids(root, token):
                             visited.add(cuid)
                             queue.append(cuid)
 
-                except:
-                    continue
+                except Exception as e:
+                    responses.append({"error": str(e)})
 
     return list(visited), responses
 
@@ -68,60 +75,82 @@ def cms_query(token, cuids):
     AND si_parent_folder_cuid IN ({cuid_list})
     """
 
+    url = f"{BASE_URL}/cmsquery?pagesize=9999"
+
     res = requests.post(
-        f"{BASE_URL}/cmsquery?pagesize=9999",
+        url,
         json={"query": query},
-        headers=headers(token),
+        headers=build_headers(token),
         timeout=30
     )
 
-    return res.json(), query
+    return {
+        "request": {
+            "url": url,
+            "headers": {"X-SAP-LogonToken": mask_token(token)},
+            "body": query
+        },
+        "response": res.json(),
+        "status": res.status_code
+    }, query
 
 
-# ---------- SCHEDULE FETCH (CORRECTED) ----------
+# ---------- SCHEDULE FETCH (FULL DEBUG) ----------
 def get_schedules(token, objects):
 
+    debug_calls = []
     schedule_map = {}
-    raw_responses = []
 
     def fetch(obj):
 
-        # ✅ CORRECT FIELD
         parent_id = obj.get("si_parentid")
 
-        if not parent_id:
-            return None, {}
+        url = f"{BASE_URL}/documents/{parent_id}/schedules"
 
         try:
             res = requests.get(
-                f"{BASE_URL}/documents/{parent_id}/schedules",
-                headers=headers(token),
+                url,
+                headers=build_headers(token),
                 timeout=10
             )
 
-            data = res.json()
-            return parent_id, data
+            try:
+                data = res.json()
+            except:
+                data = res.text  # handle XML or non-JSON
 
-        except:
-            return parent_id, {}
+            debug = {
+                "request": {
+                    "url": url,
+                    "headers": {"X-SAP-LogonToken": mask_token(token)}
+                },
+                "status": res.status_code,
+                "response": data
+            }
+
+            return parent_id, data, debug
+
+        except Exception as e:
+            return parent_id, {}, {"error": str(e), "url": url}
 
     with ThreadPoolExecutor(max_workers=15) as executor:
 
         futures = [executor.submit(fetch, o) for o in objects]
 
         for f in as_completed(futures):
-            parent_id, data = f.result()
+            parent_id, data, debug = f.result()
 
-            if not parent_id:
-                continue
+            debug_calls.append(debug)
 
-            schedule_map[parent_id] = data.get("entries", [])
-            raw_responses.append(data)
+            if isinstance(data, dict):
+                schedule_map[parent_id] = data.get("entries", [])
+            else:
+                schedule_map[parent_id] = []
 
-    return schedule_map, raw_responses
+    return schedule_map, debug_calls
 
 
-# ---------- MAIN API ----------
+# ---------- MAIN ENDPOINT ----------
 @app.route("/sap-data", methods=["POST"])
 def sap_data():
 
@@ -133,16 +162,16 @@ def sap_data():
         return jsonify({"error": "token and folder required"}), 400
 
     # 1. Folder recursion
-    cuids, folder_responses = get_all_child_cuids(folder, token)
+    cuids, folder_debug = get_all_child_cuids(folder, token)
 
-    # 2. CMS Query
-    cms_data, query = cms_query(token, cuids)
-    objects = cms_data.get("entries", [])
+    # 2. CMS query
+    cms_debug, query = cms_query(token, cuids)
+    objects = cms_debug["response"].get("entries", [])
 
-    # 3. Schedule fetch (corrected)
-    schedule_map, schedule_responses = get_schedules(token, objects)
+    # 3. Schedule fetch
+    schedule_map, schedule_debug = get_schedules(token, objects)
 
-    # 4. Consolidation
+    # 4. Merge data
     result = []
 
     for obj in objects:
@@ -171,10 +200,10 @@ def sap_data():
         "query": query,
         "folders_traversed": cuids,
 
-        # 🔍 RAW RESPONSES
-        "folder_api_responses": folder_responses,
-        "cms_raw_response": cms_data,
-        "schedule_api_responses": schedule_responses,
+        # 🔥 FULL DEBUG
+        "folder_api_debug": folder_debug,
+        "cms_api_debug": cms_debug,
+        "schedule_api_debug": schedule_debug,
 
         # ✅ FINAL DATA
         "data": result
