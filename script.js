@@ -17,7 +17,7 @@
     <td>Parent Folder:</td>
     <td>
         <select id="parentId">
-            <option value="">-- Enter Token First --</option>
+            <option value="0">Root Folder</option>
         </select>
     </td>
 </tr>
@@ -74,9 +74,7 @@ function xmlToJson(xml) {
         }
     }
 
-    if (xml.nodeType === 3) {
-        return xml.nodeValue.trim();
-    }
+    if (xml.nodeType === 3) return xml.nodeValue.trim();
 
     if (xml.hasChildNodes()) {
         for (let i = 0; i < xml.childNodes.length; i++) {
@@ -86,12 +84,9 @@ function xmlToJson(xml) {
             let value = xmlToJson(item);
             if (!value) continue;
 
-            if (!obj[nodeName]) {
-                obj[nodeName] = value;
-            } else {
-                if (!Array.isArray(obj[nodeName])) {
-                    obj[nodeName] = [obj[nodeName]];
-                }
+            if (!obj[nodeName]) obj[nodeName] = value;
+            else {
+                if (!Array.isArray(obj[nodeName])) obj[nodeName] = [obj[nodeName]];
                 obj[nodeName].push(value);
             }
         }
@@ -99,7 +94,21 @@ function xmlToJson(xml) {
     return obj;
 }
 
-// 📂 LOAD FOLDERS (FULL DEBUG)
+// 🔄 Parse response
+async function parseResponse(res) {
+    const text = await res.text();
+
+    if (!res.ok) throw new Error(text);
+
+    try {
+        return JSON.parse(text);
+    } catch {
+        const xml = new DOMParser().parseFromString(text, "text/xml");
+        return xmlToJson(xml);
+    }
+}
+
+// 📂 LOAD FOLDERS
 document.getElementById("token").addEventListener("blur", async function() {
 
     if (foldersLoaded) return;
@@ -114,53 +123,22 @@ document.getElementById("token").addEventListener("blur", async function() {
     try {
 
         const res = await fetch(`${baseUrl}/folders`, {
-            method: "GET",
             headers: {
                 "X-SAP-LogonToken": token,
-                "Accept": "application/json",
-                "Content-Type": "application/json"
+                "Accept": "application/json"
             }
         });
 
-        const raw = await res.text();
-
-        // 🔍 SHOW FULL RESPONSE
-        statusMsg.innerText =
-            "HTTP Status: " + res.status + "\n\nRAW RESPONSE:\n" + raw;
-
-        if (!res.ok) return;
-
-        let data;
-
-        try {
-            data = JSON.parse(raw);
-        } catch {
-            const xml = new DOMParser().parseFromString(raw, "text/xml");
-            data = xmlToJson(xml);
-        }
-
-        console.log("Parsed Folder Data:", data);
+        const data = await parseResponse(res);
 
         const dropdown = document.getElementById("parentId");
-        dropdown.innerHTML = '<option value="">-- Select Folder --</option>';
+        dropdown.innerHTML = '<option value="0">Root Folder</option>';
 
-        const folders =
-            data.entries ||
-            data.feed?.entry ||
-            data.Folders?.Folder ||
-            [];
+        const folders = data.entries || data.feed?.entry || [];
 
         folders.forEach(f => {
-
-            const id =
-                f.id ||
-                f["@attributes"]?.id ||
-                f.SI_ID;
-
-            const name =
-                f.name ||
-                f.title ||
-                f.SI_NAME;
+            const id = f.id || f["@attributes"]?.id || f.SI_ID;
+            const name = f.name || f.title || f.SI_NAME;
 
             if (!id || !name) return;
 
@@ -170,16 +148,46 @@ document.getElementById("token").addEventListener("blur", async function() {
             dropdown.appendChild(opt);
         });
 
-        statusMsg.innerText += "\n\nFolders Parsed: " + dropdown.length;
-
+        statusMsg.innerText = "Folders loaded";
         foldersLoaded = true;
 
     } catch (err) {
-        statusMsg.innerText =
-            "FETCH FAILED\n\n" + err.message + "\n\nLikely CORS issue";
-        console.error(err);
+        statusMsg.innerText = "Folder Error:\n" + err.message;
     }
 });
+
+// 🔥 GET ALL CHILD FOLDERS (RECURSIVE)
+async function getAllChildFolders(parentId, token, allIds = new Set()) {
+
+    allIds.add(parentId);
+
+    try {
+        const res = await fetch(`${baseUrl}/folders/${parentId}/children`, {
+            headers: {
+                "X-SAP-LogonToken": token,
+                "Accept": "application/json"
+            }
+        });
+
+        const data = await parseResponse(res);
+
+        const children = data.entries || data.feed?.entry || [];
+
+        for (let child of children) {
+
+            const childId = child.id || child["@attributes"]?.id;
+
+            if (childId && !allIds.has(childId)) {
+                await getAllChildFolders(childId, token, allIds);
+            }
+        }
+
+    } catch (err) {
+        console.log("Child fetch error:", parentId);
+    }
+
+    return Array.from(allIds);
+}
 
 // 🚀 FETCH DATA
 document.getElementById("fetchBtn").addEventListener("click", async function() {
@@ -195,7 +203,20 @@ document.getElementById("fetchBtn").addEventListener("click", async function() {
         const token = document.getElementById("token").value.trim();
         const parentId = document.getElementById("parentId").value;
 
-        if (!token || !parentId) throw new Error("Token + Folder required");
+        if (!token) throw new Error("Token required");
+
+        // 🔥 GET ALL FOLDER IDS
+        const folderIds = await getAllChildFolders(parentId, token);
+
+        const folderList = folderIds.join(",");
+
+        statusMsg.innerText = "Folders considered:\n" + folderList;
+
+        let query = `
+            SELECT SI_ID, SI_NAME, SI_OWNER, SI_PARENT_FOLDER, SI_CREATION_TIME, SI_KIND
+            FROM CI_INFOOBJECTS
+            WHERE SI_PARENT_FOLDER IN (${folderList})
+        `;
 
         const cmsRes = await fetch(`${baseUrl}/cmsquery?pagesize=9999`, {
             method: "POST",
@@ -204,27 +225,10 @@ document.getElementById("fetchBtn").addEventListener("click", async function() {
                 "X-SAP-LogonToken": token,
                 "Accept": "application/json"
             },
-            body: JSON.stringify({
-                query: `SELECT SI_ID, SI_NAME, SI_OWNER, SI_PARENTID, SI_CREATION_TIME, SI_KIND FROM CI_INFOOBJECTS WHERE SI_PARENTID=${parentId}`
-            })
+            body: JSON.stringify({ query })
         });
 
-        const cmsText = await cmsRes.text();
-
-        if (!cmsRes.ok) {
-            statusMsg.innerText = cmsText;
-            return;
-        }
-
-        let cmsData;
-
-        try {
-            cmsData = JSON.parse(cmsText);
-        } catch {
-            const xml = new DOMParser().parseFromString(cmsText, "text/xml");
-            cmsData = xmlToJson(xml);
-        }
-
+        const cmsData = await parseResponse(cmsRes);
         const objects = cmsData.entries || cmsData.feed?.entry || [];
 
         const promises = objects.map(obj => {
@@ -237,21 +241,11 @@ document.getElementById("fetchBtn").addEventListener("click", async function() {
                     "Accept": "application/json"
                 }
             })
-            .then(r => r.text())
-            .then(txt => {
-                let data;
-                try {
-                    data = JSON.parse(txt);
-                } catch {
-                    const xml = new DOMParser().parseFromString(txt, "text/xml");
-                    data = xmlToJson(xml);
-                }
-
-                return {
-                    obj,
-                    schedules: data.entries || data.feed?.entry || []
-                };
-            })
+            .then(res => parseResponse(res))
+            .then(data => ({
+                obj,
+                schedules: data.entries || data.feed?.entry || []
+            }))
             .catch(() => null);
         });
 
@@ -275,7 +269,7 @@ document.getElementById("fetchBtn").addEventListener("click", async function() {
                 tr.appendChild(td(r.obj.SI_NAME));
                 tr.appendChild(td(r.obj.SI_KIND));
                 tr.appendChild(td(s.status));
-                tr.appendChild(td(r.obj.SI_PARENTID));
+                tr.appendChild(td(r.obj.SI_PARENT_FOLDER));
                 tr.appendChild(td(r.obj.SI_OWNER));
                 tr.appendChild(td(s.endTime));
                 tr.appendChild(td(s.nextRunTime));
