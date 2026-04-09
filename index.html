@@ -1,32 +1,81 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Runner Game</title>
-
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+    <title>SAP BO Flask</title>
 </head>
-
 <body>
 
-  <div id="menu">
-    <select id="level">
-      <option value="1">Level 1</option>
-      <option value="2">Level 2</option>
-      <option value="3">Level 3</option>
-      <option value="4">Level 4</option>
-      <option value="5">Level 5</option>
-      <option value="6">Level 6</option>
-    </select>
+<h3>SAP BO (Flask Backend)</h3>
 
-    <button onclick="startGame()">Start</button>
-  </div>
+Token:
+<input type="text" id="token" size="80"><br><br>
 
-  <div id="score">0</div>
-  <div id="combo">x1</div>
+Folder CUID:
+<input type="text" id="folder"><br><br>
 
-  <canvas id="game"></canvas>
+<button onclick="runQuery()">Run</button>
 
-  <script type="module" src="main.js"></script>
+<p id="status"></p>
+
+<h4>Query</h4>
+<pre id="queryBox"></pre>
+
+<table border="1">
+<thead>
+<tr>
+<th>ID</th><th>Name</th><th>Type</th><th>Status</th>
+<th>Folder</th><th>Owner</th><th>Start</th><th>End</th>
+<th>Server</th><th>Error</th>
+</tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
+
+<script>
+
+async function runQuery() {
+
+    const token = document.getElementById("token").value;
+    const folder = document.getElementById("folder").value;
+
+    document.getElementById("status").innerText = "Processing...";
+
+    const res = await fetch("/run-query", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({token, folder})
+    });
+
+    const result = await res.json();
+
+    document.getElementById("queryBox").innerText = result.query;
+
+    const rows = result.data.entries || [];
+
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
+
+    rows.forEach(r => {
+        let tr = "<tr>" +
+            `<td>${r.si_id||""}</td>` +
+            `<td>${r.si_name||""}</td>` +
+            `<td>${r.si_kind||""}</td>` +
+            `<td>${r.si_schedule_status||""}</td>` +
+            `<td>${r.si_parent_folder_cuid||""}</td>` +
+            `<td>${r.si_owner||""}</td>` +
+            `<td>${r.si_starttime||""}</td>` +
+            `<td>${r.si_endtime||""}</td>` +
+            `<td>${r.si_machine_used||""}</td>` +
+            `<td>${r.si_status_info||""}</td>` +
+        "</tr>";
+
+        tbody.innerHTML += tr;
+    });
+
+    document.getElementById("status").innerText = "Done";
+}
+
+</script>
+
 </body>
 </html>
