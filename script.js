@@ -6,22 +6,48 @@ app = Flask(__name__)
 
 BASE_URL = "http://YOUR_BO_SERVER:6405/biprws/v1"
 
-def build_headers(token):
+# ---------- HEADERS ----------
+def headers(token):
     return {
         "X-SAP-LogonToken": token,
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
 
-def mask_token(token):
-    return token[:5] + "..." if token else ""
+# ---------- SAFE VALUE EXTRACTOR ----------
+def get_val(obj, key):
+
+    # direct
+    if key in obj:
+        val = obj[key]
+        if isinstance(val, dict):
+            return val.get("value", "")
+        return val
+
+    # lowercase
+    if key.lower() in obj:
+        val = obj[key.lower()]
+        if isinstance(val, dict):
+            return val.get("value", "")
+        return val
+
+    # nested properties
+    props = obj.get("properties", {})
+
+    if key in props:
+        return props[key].get("value", "")
+
+    if key.upper() in props:
+        return props[key.upper()].get("value", "")
+
+    return ""
 
 # ---------- FOLDER RECURSION ----------
 def get_all_child_cuids(root, token):
 
     visited = set([root])
     queue = [root]
-    responses = []
+    debug = []
 
     with ThreadPoolExecutor(max_workers=10) as executor:
 
@@ -33,7 +59,7 @@ def get_all_child_cuids(root, token):
                 executor.submit(
                     requests.get,
                     f"{BASE_URL}/folders/{c}/children?type=Folder",
-                    headers=build_headers(token),
+                    headers=headers(token),
                     timeout=10
                 )
                 for c in batch
@@ -43,7 +69,8 @@ def get_all_child_cuids(root, token):
                 try:
                     res = f.result()
                     data = res.json()
-                    responses.append({
+
+                    debug.append({
                         "url": res.url,
                         "status": res.status_code,
                         "response": data
@@ -56,22 +83,22 @@ def get_all_child_cuids(root, token):
                             queue.append(cuid)
 
                 except Exception as e:
-                    responses.append({"error": str(e)})
+                    debug.append({"error": str(e)})
 
-    return list(visited), responses
+    return list(visited), debug
 
 
 # ---------- CMS QUERY ----------
-def cms_query(token, cuids):
+def run_cms_query(token, cuids):
 
     cuid_list = ",".join([f"'{c}'" for c in cuids])
 
     query = f"""
-    SELECT si_id, si_parentid, si_name, si_kind, si_schedule_status, 
-           si_parent_folder_cuid, si_owner, si_starttime, si_endtime, 
+    SELECT si_id, si_parentid, si_name, si_kind, si_schedule_status,
+           si_parent_folder_cuid, si_owner, si_starttime, si_endtime,
            si_machine_used, si_status_info
     FROM ci_infoobjects, ci_appobjects, ci_systemobjects
-    WHERE si_instance=1 
+    WHERE si_instance=1
     AND si_parent_folder_cuid IN ({cuid_list})
     """
 
@@ -80,55 +107,47 @@ def cms_query(token, cuids):
     res = requests.post(
         url,
         json={"query": query},
-        headers=build_headers(token),
+        headers=headers(token),
         timeout=30
     )
 
     return {
-        "request": {
-            "url": url,
-            "headers": {"X-SAP-LogonToken": mask_token(token)},
-            "body": query
-        },
+        "request": {"url": url, "query": query},
         "response": res.json(),
         "status": res.status_code
     }, query
 
 
-# ---------- SCHEDULE FETCH (FULL DEBUG) ----------
+# ---------- SCHEDULE FETCH ----------
 def get_schedules(token, objects):
 
-    debug_calls = []
     schedule_map = {}
+    debug = []
 
     def fetch(obj):
 
-        parent_id = obj.get("si_parentid")
+        parent_id = get_val(obj, "SI_PARENTID")
+
+        if not parent_id:
+            return None, {}, {"error": "Missing parent_id"}
 
         url = f"{BASE_URL}/documents/{parent_id}/schedules"
 
         try:
-            res = requests.get(
-                url,
-                headers=build_headers(token),
-                timeout=10
-            )
+            res = requests.get(url, headers=headers(token), timeout=10)
 
             try:
                 data = res.json()
             except:
-                data = res.text  # handle XML or non-JSON
+                data = {"raw": res.text}
 
-            debug = {
-                "request": {
-                    "url": url,
-                    "headers": {"X-SAP-LogonToken": mask_token(token)}
-                },
+            debug_info = {
+                "url": url,
                 "status": res.status_code,
                 "response": data
             }
 
-            return parent_id, data, debug
+            return parent_id, data, debug_info
 
         except Exception as e:
             return parent_id, {}, {"error": str(e), "url": url}
@@ -138,19 +157,19 @@ def get_schedules(token, objects):
         futures = [executor.submit(fetch, o) for o in objects]
 
         for f in as_completed(futures):
-            parent_id, data, debug = f.result()
+            parent_id, data, dbg = f.result()
 
-            debug_calls.append(debug)
+            debug.append(dbg)
 
             if isinstance(data, dict):
                 schedule_map[parent_id] = data.get("entries", [])
             else:
                 schedule_map[parent_id] = []
 
-    return schedule_map, debug_calls
+    return schedule_map, debug
 
 
-# ---------- MAIN ENDPOINT ----------
+# ---------- MAIN API ----------
 @app.route("/sap-data", methods=["POST"])
 def sap_data():
 
@@ -165,8 +184,10 @@ def sap_data():
     cuids, folder_debug = get_all_child_cuids(folder, token)
 
     # 2. CMS query
-    cms_debug, query = cms_query(token, cuids)
-    objects = cms_debug["response"].get("entries", [])
+    cms_debug, query = run_cms_query(token, cuids)
+    cms_data = cms_debug["response"]
+
+    objects = cms_data.get("entries") or cms_data.get("feed", {}).get("entry", []) or []
 
     # 3. Schedule fetch
     schedule_map, schedule_debug = get_schedules(token, objects)
@@ -176,41 +197,35 @@ def sap_data():
 
     for obj in objects:
 
-        parent_id = obj.get("si_parentid")
+        parent_id = get_val(obj, "SI_PARENTID")
         schedules = schedule_map.get(parent_id, [])
 
         for s in schedules:
             result.append({
-                "instance_id": obj.get("si_id"),
-                "document_id": parent_id,
-                "name": obj.get("si_name"),
-                "type": obj.get("si_kind"),
-                "status": obj.get("si_schedule_status"),
-                "owner": obj.get("si_owner"),
-                "folder": obj.get("si_parent_folder_cuid"),
-                "start": obj.get("si_starttime"),
-                "end": obj.get("si_endtime"),
-                "server": obj.get("si_machine_used"),
-                "error": obj.get("si_status_info"),
+                "si_id": get_val(obj, "SI_ID"),
+                "si_parentid": parent_id,
+                "si_name": get_val(obj, "SI_NAME"),
+                "si_kind": get_val(obj, "SI_KIND"),
+                "si_schedule_status": get_val(obj, "SI_SCHEDULE_STATUS"),
+                "si_parent_folder_cuid": get_val(obj, "SI_PARENT_FOLDER_CUID"),
+                "si_owner": get_val(obj, "SI_OWNER"),
+                "si_starttime": get_val(obj, "SI_STARTTIME"),
+                "si_endtime": get_val(obj, "SI_ENDTIME"),
+                "si_machine_used": get_val(obj, "SI_MACHINE_USED"),
+                "si_status_info": get_val(obj, "SI_STATUS_INFO"),
                 "next_run": s.get("nextRunTime"),
                 "completion": s.get("endTime")
             })
 
     return jsonify({
         "query": query,
-        "folders_traversed": cuids,
-
-        # 🔥 FULL DEBUG
-        "folder_api_debug": folder_debug,
-        "cms_api_debug": cms_debug,
-        "schedule_api_debug": schedule_debug,
-
-        # ✅ FINAL DATA
+        "folders": cuids,
+        "cms_debug": cms_debug,
+        "schedule_debug": schedule_debug,
         "data": result
     })
 
 
-# ---------- UI ----------
 @app.route("/")
 def home():
     return render_template("index.html")
