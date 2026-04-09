@@ -1,38 +1,32 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SAP BO Ultra Fast Viewer</title>
+    <title>SAP BO Final Working</title>
 </head>
 <body>
 
-<h3>SAP BO Super Ultra Fast ⚡</h3>
+<h3>SAP BO Schedule Data</h3>
 
 Token:
 <input type="text" id="token" size="80"><br><br>
 
-Parent Folder:
-<select id="folderSelect">
-    <option value="">-- Load after token --</option>
-</select>
+Parent Folder CUID:
+<input type="text" id="folderInput"><br><br>
 
-<br><br>
 <button id="runBtn">Run Query</button>
 
 <p id="status"></p>
 
-<!-- Loader -->
 <div id="loader" style="display:none;">
     <div style="width:30px;height:30px;border:5px solid #ccc;border-top:5px solid black;border-radius:50%;animation:spin 1s linear infinite;"></div>
 </div>
 
 <style>
-@keyframes spin {
-    100% { transform: rotate(360deg); }
-}
+@keyframes spin { 100% { transform: rotate(360deg); } }
 </style>
 
 <h4>Query Used:</h4>
-<pre id="queryBox" style="background:#f5f5f5;padding:10px;"></pre>
+<pre id="queryBox"></pre>
 
 <table border="1" id="table">
 <thead>
@@ -49,9 +43,6 @@ Parent Folder:
 <script>
 
 const baseUrl = "http://YOUR_BO_SERVER:6405/biprws/v1";
-
-let folderTree = {};
-let allFolders = [];
 
 // Prevent refresh
 document.addEventListener("keydown", e => {
@@ -88,77 +79,51 @@ async function parse(res) {
     }
 }
 
-// 🚀 LOAD ALL FOLDERS ONCE (KEY SPEED BOOST)
-document.getElementById("token").addEventListener("blur", async () => {
+// 🔥 SAFE FIELD EXTRACTOR (fix empty cells)
+function getVal(obj, key) {
+    return obj[key] ||
+           obj[key?.toUpperCase()] ||
+           obj?.properties?.[key]?.value ||
+           obj?.properties?.[key?.toUpperCase()]?.value ||
+           "";
+}
 
-    const token = document.getElementById("token").value.trim();
-    if (!token) return;
-
-    const status = document.getElementById("status");
-    const loader = document.getElementById("loader");
-
-    status.innerText = "Loading all folders (one-time)...";
-    loader.style.display = "block";
-
-    try {
-
-        const res = await fetch(`${baseUrl}/folders?pagesize=9999`, {
-            headers: {
-                "X-SAP-LogonToken": token,
-                "Accept": "application/json"
-            }
-        });
-
-        const data = await parse(res);
-        const folders = data.entries || data.feed?.entry || [];
-
-        allFolders = folders;
-        folderTree = {};
-
-        const dropdown = document.getElementById("folderSelect");
-        dropdown.innerHTML = "";
-
-        folders.forEach(f => {
-
-            const cuid = f.cuid || f["@attributes"]?.cuid;
-            const parent = f.parent_cuid || f.si_parent_cuid;
-            const name = f.name || f.title;
-
-            if (!cuid) return;
-
-            if (!folderTree[parent]) folderTree[parent] = [];
-            folderTree[parent].push(cuid);
-
-            let opt = document.createElement("option");
-            opt.value = cuid;
-            opt.text = name;
-            dropdown.appendChild(opt);
-        });
-
-        status.innerText = "Folders cached: " + folders.length;
-
-    } catch (e) {
-        status.innerText = e.message;
-    }
-
-    loader.style.display = "none";
-});
-
-// ⚡ INSTANT TREE TRAVERSAL
-function getAllCuids(root) {
+// 🚀 PARALLEL BFS FOLDER FETCH (FAST + CORRECT)
+async function getAllCuids(root, token) {
 
     let result = new Set([root]);
-    let stack = [root];
+    let queue = [root];
 
-    while (stack.length) {
-        let current = stack.pop();
-        let children = folderTree[current] || [];
+    const CONCURRENCY = 5;
 
-        children.forEach(c => {
-            if (!result.has(c)) {
-                result.add(c);
-                stack.push(c);
-            }
+    while (queue.length) {
+
+        let batch = queue.splice(0, CONCURRENCY);
+
+        let responses = await Promise.all(batch.map(cuid =>
+            fetch(`${baseUrl}/folders/${cuid}/children`, {
+                headers: {
+                    "X-SAP-LogonToken": token,
+                    "Accept": "application/json"
+                }
+            })
+            .then(r => parse(r))
+            .catch(() => null)
+        ));
+
+        responses.forEach(data => {
+            if (!data) return;
+
+            const children = data.entries || data.feed?.entry || [];
+
+            children.forEach(c => {
+                const cuid = getVal(c, "cuid");
+
+                if (cuid && !result.has(cuid)) {
+                    result.add(cuid);
+                    queue.push(cuid);
+                }
+            });
         });
     }
 
@@ -169,7 +134,7 @@ function getAllCuids(root) {
 document.getElementById("runBtn").addEventListener("click", async () => {
 
     const token = document.getElementById("token").value.trim();
-    const root = document.getElementById("folderSelect").value;
+    const root = document.getElementById("folderInput").value.trim();
 
     const status = document.getElementById("status");
     const loader = document.getElementById("loader");
@@ -183,9 +148,11 @@ document.getElementById("runBtn").addEventListener("click", async () => {
 
     try {
 
-        status.innerText = "Resolving folders (instant)...";
+        status.innerText = "Fetching folder tree...";
 
-        const cuids = getAllCuids(root);
+        const cuids = await getAllCuids(root, token);
+
+        status.innerText = "Folders: " + cuids.length;
 
         const query = `
 SELECT si_id, si_name, si_kind, si_schedule_status, si_parent_folder_cuid,
@@ -213,52 +180,37 @@ WHERE si_instance=1 AND si_parent_folder_cuid IN (${cuids.map(c=>`'${c}'`).join(
 
         status.innerText = "Rendering...";
 
-        // ⚡ Chunk rendering
-        let i = 0;
+        rows.forEach(r => {
 
-        function render() {
-            let chunk = rows.slice(i, i + 200);
+            let tr = document.createElement("tr");
 
-            chunk.forEach(r => {
-
-                let tr = document.createElement("tr");
-
-                function td(v) {
-                    let c = document.createElement("td");
-                    c.innerText = v || "";
-                    return c;
-                }
-
-                tr.appendChild(td(r.si_id));
-                tr.appendChild(td(r.si_name));
-                tr.appendChild(td(r.si_kind));
-                tr.appendChild(td(r.si_schedule_status));
-                tr.appendChild(td(r.si_parent_folder_cuid));
-                tr.appendChild(td(r.si_owner));
-                tr.appendChild(td(r.si_starttime));
-                tr.appendChild(td(r.si_endtime));
-                tr.appendChild(td(r.si_machine_used));
-                tr.appendChild(td(r.si_status_info));
-
-                tbody.appendChild(tr);
-            });
-
-            i += 200;
-
-            if (i < rows.length) {
-                requestAnimationFrame(render);
-            } else {
-                status.innerText = "Loaded " + rows.length + " rows ⚡";
-                loader.style.display = "none";
+            function td(v) {
+                let c = document.createElement("td");
+                c.innerText = v || "";
+                return c;
             }
-        }
 
-        render();
+            tr.appendChild(td(getVal(r, "SI_ID")));
+            tr.appendChild(td(getVal(r, "SI_NAME")));
+            tr.appendChild(td(getVal(r, "SI_KIND")));
+            tr.appendChild(td(getVal(r, "SI_SCHEDULE_STATUS")));
+            tr.appendChild(td(getVal(r, "SI_PARENT_FOLDER_CUID")));
+            tr.appendChild(td(getVal(r, "SI_OWNER")));
+            tr.appendChild(td(getVal(r, "SI_STARTTIME")));
+            tr.appendChild(td(getVal(r, "SI_ENDTIME")));
+            tr.appendChild(td(getVal(r, "SI_MACHINE_USED")));
+            tr.appendChild(td(getVal(r, "SI_STATUS_INFO")));
+
+            tbody.appendChild(tr);
+        });
+
+        status.innerText = "Loaded " + rows.length + " rows";
 
     } catch (e) {
         status.innerText = e.message;
-        loader.style.display = "none";
     }
+
+    loader.style.display = "none";
 });
 
 </script>
