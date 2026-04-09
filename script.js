@@ -18,7 +18,7 @@ def get_all_child_cuids(root, token):
 
     visited = set([root])
     queue = [root]
-    folder_api_responses = []
+    responses = []
 
     with ThreadPoolExecutor(max_workers=10) as executor:
 
@@ -40,7 +40,7 @@ def get_all_child_cuids(root, token):
                 try:
                     res = f.result()
                     data = res.json()
-                    folder_api_responses.append(data)
+                    responses.append(data)
 
                     for child in data.get("entries", []):
                         cuid = child.get("cuid")
@@ -51,7 +51,7 @@ def get_all_child_cuids(root, token):
                 except:
                     continue
 
-    return list(visited), folder_api_responses
+    return list(visited), responses
 
 
 # ---------- CMS QUERY ----------
@@ -60,10 +60,12 @@ def cms_query(token, cuids):
     cuid_list = ",".join([f"'{c}'" for c in cuids])
 
     query = f"""
-    SELECT si_id, si_name, si_kind, si_schedule_status, si_parent_folder_cuid,
-    si_owner, si_starttime, si_endtime, si_machine_used, si_status_info
+    SELECT si_id, si_parent, si_name, si_kind, si_schedule_status, 
+           si_parent_folder_cuid, si_owner, si_starttime, si_endtime, 
+           si_machine_used, si_status_info
     FROM ci_infoobjects, ci_appobjects, ci_systemobjects
-    WHERE si_instance=1 AND si_parent_folder_cuid IN ({cuid_list})
+    WHERE si_instance=1 
+    AND si_parent_folder_cuid IN ({cuid_list})
     """
 
     res = requests.post(
@@ -80,18 +82,26 @@ def cms_query(token, cuids):
 def get_schedules(token, objects):
 
     schedule_map = {}
-    schedule_api_responses = []
+    raw_responses = []
 
     def fetch(obj):
-        doc_id = obj.get("si_id")
+
+        # 🔥 IMPORTANT CHANGE
+        doc_id = obj.get("si_parent")
+
+        if not doc_id:
+            return None, []
+
         try:
             res = requests.get(
                 f"{BASE_URL}/documents/{doc_id}/schedules",
                 headers=headers(token),
                 timeout=10
             )
+
             data = res.json()
             return doc_id, data
+
         except:
             return doc_id, {}
 
@@ -101,10 +111,14 @@ def get_schedules(token, objects):
 
         for f in as_completed(futures):
             doc_id, data = f.result()
-            schedule_map[doc_id] = data.get("entries", [])
-            schedule_api_responses.append(data)
 
-    return schedule_map, schedule_api_responses
+            if not doc_id:
+                continue
+
+            schedule_map[doc_id] = data.get("entries", [])
+            raw_responses.append(data)
+
+    return schedule_map, raw_responses
 
 
 # ---------- MAIN ENDPOINT ----------
@@ -118,25 +132,28 @@ def sap_data():
     if not token or not folder:
         return jsonify({"error": "token and folder required"}), 400
 
-    # 1. Folder traversal
+    # 1. Folder recursion
     cuids, folder_responses = get_all_child_cuids(folder, token)
 
-    # 2. CMS query
+    # 2. CMS Query
     cms_data, query = cms_query(token, cuids)
     objects = cms_data.get("entries", [])
 
     # 3. Schedule fetch
     schedule_map, schedule_responses = get_schedules(token, objects)
 
-    # 4. Consolidated result
+    # 4. Consolidation
     result = []
 
     for obj in objects:
-        doc_id = obj.get("si_id")
+
+        doc_id = obj.get("si_parent")
         schedules = schedule_map.get(doc_id, [])
 
         for s in schedules:
             result.append({
+                "instance_id": obj.get("si_id"),
+                "document_id": doc_id,
                 "name": obj.get("si_name"),
                 "type": obj.get("si_kind"),
                 "status": obj.get("si_schedule_status"),
@@ -154,12 +171,12 @@ def sap_data():
         "query": query,
         "folders_traversed": cuids,
 
-        # 🔥 RAW RESPONSES
+        # Raw responses
         "folder_api_responses": folder_responses,
         "cms_raw_response": cms_data,
         "schedule_api_responses": schedule_responses,
 
-        # ✅ FINAL DATA
+        # Final data
         "data": result
     })
 
