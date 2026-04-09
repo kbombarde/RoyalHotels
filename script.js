@@ -60,7 +60,7 @@ def cms_query(token, cuids):
     cuid_list = ",".join([f"'{c}'" for c in cuids])
 
     query = f"""
-    SELECT si_id, si_parent, si_name, si_kind, si_schedule_status, 
+    SELECT si_id, si_parentid, si_name, si_kind, si_schedule_status, 
            si_parent_folder_cuid, si_owner, si_starttime, si_endtime, 
            si_machine_used, si_status_info
     FROM ci_infoobjects, ci_appobjects, ci_systemobjects
@@ -78,7 +78,7 @@ def cms_query(token, cuids):
     return res.json(), query
 
 
-# ---------- SCHEDULE FETCH ----------
+# ---------- SCHEDULE FETCH (CORRECTED) ----------
 def get_schedules(token, objects):
 
     schedule_map = {}
@@ -86,42 +86,42 @@ def get_schedules(token, objects):
 
     def fetch(obj):
 
-        # 🔥 IMPORTANT CHANGE
-        doc_id = obj.get("si_parent")
+        # ✅ CORRECT FIELD
+        parent_id = obj.get("si_parentid")
 
-        if not doc_id:
-            return None, []
+        if not parent_id:
+            return None, {}
 
         try:
             res = requests.get(
-                f"{BASE_URL}/documents/{doc_id}/schedules",
+                f"{BASE_URL}/documents/{parent_id}/schedules",
                 headers=headers(token),
                 timeout=10
             )
 
             data = res.json()
-            return doc_id, data
+            return parent_id, data
 
         except:
-            return doc_id, {}
+            return parent_id, {}
 
     with ThreadPoolExecutor(max_workers=15) as executor:
 
         futures = [executor.submit(fetch, o) for o in objects]
 
         for f in as_completed(futures):
-            doc_id, data = f.result()
+            parent_id, data = f.result()
 
-            if not doc_id:
+            if not parent_id:
                 continue
 
-            schedule_map[doc_id] = data.get("entries", [])
+            schedule_map[parent_id] = data.get("entries", [])
             raw_responses.append(data)
 
     return schedule_map, raw_responses
 
 
-# ---------- MAIN ENDPOINT ----------
+# ---------- MAIN API ----------
 @app.route("/sap-data", methods=["POST"])
 def sap_data():
 
@@ -139,7 +139,7 @@ def sap_data():
     cms_data, query = cms_query(token, cuids)
     objects = cms_data.get("entries", [])
 
-    # 3. Schedule fetch
+    # 3. Schedule fetch (corrected)
     schedule_map, schedule_responses = get_schedules(token, objects)
 
     # 4. Consolidation
@@ -147,13 +147,13 @@ def sap_data():
 
     for obj in objects:
 
-        doc_id = obj.get("si_parent")
-        schedules = schedule_map.get(doc_id, [])
+        parent_id = obj.get("si_parentid")
+        schedules = schedule_map.get(parent_id, [])
 
         for s in schedules:
             result.append({
                 "instance_id": obj.get("si_id"),
-                "document_id": doc_id,
+                "document_id": parent_id,
                 "name": obj.get("si_name"),
                 "type": obj.get("si_kind"),
                 "status": obj.get("si_schedule_status"),
@@ -171,12 +171,12 @@ def sap_data():
         "query": query,
         "folders_traversed": cuids,
 
-        # Raw responses
+        # 🔍 RAW RESPONSES
         "folder_api_responses": folder_responses,
         "cms_raw_response": cms_data,
         "schedule_api_responses": schedule_responses,
 
-        # Final data
+        # ✅ FINAL DATA
         "data": result
     })
 
