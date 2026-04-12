@@ -1,57 +1,56 @@
-async def get_folder_list(client, token, base_url):
-    """
-    Fetch all folders from SAP BO
-    """
+async def get_folder_map(client, token, base_url):
 
-    try:
-        res = await client.get(
-            f"{base_url}/folders?type=Folder&pagesize=9999",
-            headers={
-                "X-SAP-LogonToken": token,
-                "Accept": "application/json"
-            }
-        )
+    folder_map = {}
 
-        if res.status_code != 200:
-            print("Folder API failed:", res.text)
-            return []
+    async def fetch_children(parent_cuid):
+        try:
+            res = await client.get(
+                f"{base_url}/folders/{parent_cuid}/children",
+                params={"type": "Folder"},
+                headers=headers(token)
+            )
 
-        data = res.json()
+            if res.status_code != 200:
+                return
 
-        return data.get("entries", [])
+            children = res.json().get("entries", [])
 
-    except Exception as e:
-        print("Folder fetch error:", e)
-        return []
-        
-        
-        
+            for f in children:
+                cuid = f.get("cuid")
 
+                folder_map[cuid] = {
+                    "name": f.get("name"),
+                    "parent": parent_cuid
+                }
 
-def get_instance_location(parent_cuid, folders):
-    """
-    Build folder path like /abc/def (excluding Root)
-    folders = response from /folders?type=Folder
-    """
+                await fetch_children(cuid)
 
-    # Build map once
-    folder_map = {
-        f.get("cuid"): {
-            "name": f.get("name"),
-            "parent": f.get("parent_cuid")
-        }
-        for f in folders
-    }
+        except:
+            return
+
+    # 🔥 Start from root (this works in most systems)
+    ROOT_CUID = "23"
+
+    await fetch_children(ROOT_CUID)
+
+    return folder_map
+    
+    
+    
+    
+    
+    
+    def get_location_from_map(parent_cuid, folder_map):
 
     path = []
     current = parent_cuid
 
     while current and current in folder_map:
+
         node = folder_map[current]
         name = node.get("name", "")
 
-        # Skip root
-        if name and name.lower() not in ["root", "root folder"]:
+        if name.lower() not in ["root", "root folder"]:
             path.append(name)
 
         current = node.get("parent")
