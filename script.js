@@ -1,12 +1,28 @@
-from flask import Flask, request, jsonify, render_template
-import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+import httpx, asyncio
+from datetime import datetime, timedelta
 
-app = Flask(__name__)
+app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key="secret")
 
-BASE_URL = "http://YOUR_BO_SERVER:6405/biprws/v1"
+templates = Jinja2Templates(directory="templates")
 
-# ---------- HEADERS ----------
+# 🔥 ENV CONFIG
+ENV_CONFIG = {
+    "DEV": "http://dev-bo-server:6405/biprws/v1",
+    "QA": "http://qa-bo-server:6405/biprws/v1",
+    "UAT": "http://uat-bo-server:6405/biprws/v1",
+    "PROD": "http://prod-bo-server:6405/biprws/v1"
+}
+
+# 🔥 CACHE
+schedule_cache = {}
+CACHE_TTL = 300
+
+
 def headers(token):
     return {
         "X-SAP-LogonToken": token,
@@ -14,82 +30,80 @@ def headers(token):
         "Content-Type": "application/json"
     }
 
-# ---------- SAFE VALUE EXTRACTOR ----------
+
 def get_val(obj, key):
-
-    # direct
     if key in obj:
-        val = obj[key]
-        if isinstance(val, dict):
-            return val.get("value", "")
-        return val
-
-    # lowercase
+        v = obj[key]
+        return v.get("value") if isinstance(v, dict) else v
     if key.lower() in obj:
-        val = obj[key.lower()]
-        if isinstance(val, dict):
-            return val.get("value", "")
-        return val
-
-    # nested properties
+        v = obj[key.lower()]
+        return v.get("value") if isinstance(v, dict) else v
     props = obj.get("properties", {})
-
     if key in props:
-        return props[key].get("value", "")
-
+        return props[key].get("value")
     if key.upper() in props:
-        return props[key.upper()].get("value", "")
-
+        return props[key.upper()].get("value")
     return ""
 
-# ---------- FOLDER RECURSION ----------
-def get_all_child_cuids(root, token):
 
-    visited = set([root])
-    queue = [root]
-    debug = []
-
-    with ThreadPoolExecutor(max_workers=10) as executor:
-
-        while queue:
-            batch = queue[:10]
-            queue = queue[10:]
-
-            futures = [
-                executor.submit(
-                    requests.get,
-                    f"{BASE_URL}/folders/{c}/children?type=Folder",
-                    headers=headers(token),
-                    timeout=10
-                )
-                for c in batch
-            ]
-
-            for f in as_completed(futures):
-                try:
-                    res = f.result()
-                    data = res.json()
-
-                    debug.append({
-                        "url": res.url,
-                        "status": res.status_code,
-                        "response": data
-                    })
-
-                    for child in data.get("entries", []):
-                        cuid = child.get("cuid")
-                        if cuid and cuid not in visited:
-                            visited.add(cuid)
-                            queue.append(cuid)
-
-                except Exception as e:
-                    debug.append({"error": str(e)})
-
-    return list(visited), debug
+# ============================================================
+# LOGIN / AUTH
+# ============================================================
+@app.get("/envs")
+async def get_envs():
+    return {"envs": list(ENV_CONFIG.keys())}
 
 
-# ---------- CMS QUERY ----------
-def run_cms_query(token, cuids):
+@app.post("/login")
+async def login(req: Request):
+
+    body = await req.json()
+    env = body.get("env")
+
+    base_url = ENV_CONFIG.get(env)
+    if not base_url:
+        raise HTTPException(400, "Invalid ENV")
+
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"{base_url}/logon/long",
+            json={
+                "userName": body["username"],
+                "password": body["password"],
+                "auth": body["auth"]
+            }
+        )
+
+    token = res.headers.get("X-SAP-LogonToken")
+
+    if not token:
+        raise HTTPException(401, "Login failed")
+
+    req.session["token"] = token
+    req.session["env"] = env
+
+    return {"success": True}
+
+
+@app.get("/check-auth")
+async def check_auth(req: Request):
+    return {
+        "authenticated": bool(req.session.get("token")),
+        "env": req.session.get("env")
+    }
+
+
+@app.post("/logout")
+async def logout(req: Request):
+    req.session.clear()
+    return {"success": True}
+
+
+# ============================================================
+# CORE METHODS
+# ============================================================
+
+async def cms_query(client, token, cuids, base_url):
 
     cuid_list = ",".join([f"'{c}'" for c in cuids])
 
@@ -102,134 +116,168 @@ def run_cms_query(token, cuids):
     AND si_parent_folder_cuid IN ({cuid_list})
     """
 
-    url = f"{BASE_URL}/cmsquery?pagesize=9999"
-
-    res = requests.post(
-        url,
+    res = await client.post(
+        f"{base_url}/cmsquery?pagesize=9999",
         json={"query": query},
-        headers=headers(token),
-        timeout=30
+        headers=headers(token)
     )
 
-    return {
-        "request": {"url": url, "query": query},
-        "response": res.json(),
-        "status": res.status_code
-    }, query
+    data = res.json()
+    objects = data.get("entries") or data.get("feed", {}).get("entry", []) or []
+
+    return objects, query
 
 
-# ---------- SCHEDULE FETCH ----------
-def get_schedules(token, objects):
+async def get_schedule(client, token, parent_id, base_url):
 
-    schedule_map = {}
-    debug = []
+    now = datetime.now()
 
-    def fetch(obj):
+    if parent_id in schedule_cache:
+        cached = schedule_cache[parent_id]
+        if now < cached["expiry"]:
+            return cached["data"]
 
-        parent_id = get_val(obj, "SI_PARENTID")
+    try:
+        res = await client.get(
+            f"{base_url}/documents/{parent_id}/schedules",
+            headers=headers(token)
+        )
 
-        if not parent_id:
-            return None, {}, {"error": "Missing parent_id"}
+        data = res.json().get("entries", [])
 
-        url = f"{BASE_URL}/documents/{parent_id}/schedules"
+        schedule_cache[parent_id] = {
+            "data": data,
+            "expiry": now + timedelta(seconds=CACHE_TTL)
+        }
 
-        try:
-            res = requests.get(url, headers=headers(token), timeout=10)
+        return data
+
+    except:
+        return []
+
+
+async def get_all_schedules(client, token, parent_ids, base_url):
+
+    tasks = [get_schedule(client, token, pid, base_url) for pid in parent_ids]
+    results = await asyncio.gather(*tasks)
+
+    return dict(zip(parent_ids, results))
+
+
+async def get_all_child_cuids(token, root, base_url):
+
+    async with httpx.AsyncClient() as client:
+
+        visited = set([root])
+        queue = [root]
+
+        while queue:
+            current = queue.pop(0)
 
             try:
+                res = await client.get(
+                    f"{base_url}/folders/{current}/children?type=Folder",
+                    headers=headers(token)
+                )
+
                 data = res.json()
+
+                for child in data.get("entries", []):
+                    cuid = child.get("cuid")
+                    if cuid and cuid not in visited:
+                        visited.add(cuid)
+                        queue.append(cuid)
+
             except:
-                data = {"raw": res.text}
+                continue
 
-            debug_info = {
-                "url": url,
-                "status": res.status_code,
-                "response": data
-            }
+        return list(visited)
 
-            return parent_id, data, debug_info
 
-        except Exception as e:
-            return parent_id, {}, {"error": str(e), "url": url}
+async def build_data(token, cuids, base_url, page, page_size):
 
-    with ThreadPoolExecutor(max_workers=15) as executor:
+    async with httpx.AsyncClient() as client:
 
-        futures = [executor.submit(fetch, o) for o in objects]
+        objects, query = await cms_query(client, token, cuids, base_url)
 
-        for f in as_completed(futures):
-            parent_id, data, dbg = f.result()
+        parent_ids = list(set(get_val(o, "SI_PARENTID") for o in objects))
 
-            debug.append(dbg)
+        schedule_map = await get_all_schedules(client, token, parent_ids, base_url)
 
-            if isinstance(data, dict):
-                schedule_map[parent_id] = data.get("entries", [])
+        result = []
+
+        for obj in objects:
+
+            parent_id = get_val(obj, "SI_PARENTID")
+            schedules = schedule_map.get(parent_id, [])
+
+            if not schedules:
+                result.append({
+                    "si_id": get_val(obj, "SI_ID"),
+                    "si_parentid": parent_id,
+                    "si_name": get_val(obj, "SI_NAME"),
+                    "si_kind": get_val(obj, "SI_KIND"),
+                    "si_schedule_status": get_val(obj, "SI_SCHEDULE_STATUS"),
+                    "si_owner": get_val(obj, "SI_OWNER"),
+                    "si_starttime": get_val(obj, "SI_STARTTIME"),
+                    "si_endtime": get_val(obj, "SI_ENDTIME"),
+                    "next_run": "",
+                    "completion": ""
+                })
             else:
-                schedule_map[parent_id] = []
+                for s in schedules:
+                    result.append({
+                        "si_id": get_val(obj, "SI_ID"),
+                        "si_parentid": parent_id,
+                        "si_name": get_val(obj, "SI_NAME"),
+                        "si_kind": get_val(obj, "SI_KIND"),
+                        "si_schedule_status": get_val(obj, "SI_SCHEDULE_STATUS"),
+                        "si_owner": get_val(obj, "SI_OWNER"),
+                        "si_starttime": get_val(obj, "SI_STARTTIME"),
+                        "si_endtime": get_val(obj, "SI_ENDTIME"),
+                        "next_run": s.get("nextRunTime"),
+                        "completion": s.get("endTime")
+                    })
 
-    return schedule_map, debug
+        total = len(result)
+        start = (page - 1) * page_size
+        end = start + page_size
 
-
-# ---------- MAIN API ----------
-@app.route("/sap-data", methods=["POST"])
-def sap_data():
-
-    body = request.json
-    token = body.get("token")
-    folder = body.get("folder")
-
-    if not token or not folder:
-        return jsonify({"error": "token and folder required"}), 400
-
-    # 1. Folder recursion
-    cuids, folder_debug = get_all_child_cuids(folder, token)
-
-    # 2. CMS query
-    cms_debug, query = run_cms_query(token, cuids)
-    cms_data = cms_debug["response"]
-
-    objects = cms_data.get("entries") or cms_data.get("feed", {}).get("entry", []) or []
-
-    # 3. Schedule fetch
-    schedule_map, schedule_debug = get_schedules(token, objects)
-
-    # 4. Merge data
-    result = []
-
-    for obj in objects:
-
-        parent_id = get_val(obj, "SI_PARENTID")
-        schedules = schedule_map.get(parent_id, [])
-
-        for s in schedules:
-            result.append({
-                "si_id": get_val(obj, "SI_ID"),
-                "si_parentid": parent_id,
-                "si_name": get_val(obj, "SI_NAME"),
-                "si_kind": get_val(obj, "SI_KIND"),
-                "si_schedule_status": get_val(obj, "SI_SCHEDULE_STATUS"),
-                "si_parent_folder_cuid": get_val(obj, "SI_PARENT_FOLDER_CUID"),
-                "si_owner": get_val(obj, "SI_OWNER"),
-                "si_starttime": get_val(obj, "SI_STARTTIME"),
-                "si_endtime": get_val(obj, "SI_ENDTIME"),
-                "si_machine_used": get_val(obj, "SI_MACHINE_USED"),
-                "si_status_info": get_val(obj, "SI_STATUS_INFO"),
-                "next_run": s.get("nextRunTime"),
-                "completion": s.get("endTime")
-            })
-
-    return jsonify({
-        "query": query,
-        "folders": cuids,
-        "cms_debug": cms_debug,
-        "schedule_debug": schedule_debug,
-        "data": result
-    })
+        return {
+            "query": query,
+            "total": total,
+            "page": page,
+            "data": result[start:end]
+        }
 
 
-@app.route("/")
-def home():
-    return render_template("index.html")
+# ============================================================
+# MAIN API
+# ============================================================
+@app.post("/sap-data")
+async def sap_data(req: Request):
+
+    body = await req.json()
+
+    token = req.session.get("token")
+    env = req.session.get("env")
+
+    if not token:
+        raise HTTPException(401, "Not authenticated")
+
+    base_url = ENV_CONFIG.get(env)
+
+    cuids = await get_all_child_cuids(token, body["folder"], base_url)
+
+    return await build_data(
+        token,
+        cuids,
+        base_url,
+        int(body.get("page", 1)),
+        int(body.get("page_size", 50))
+    )
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
