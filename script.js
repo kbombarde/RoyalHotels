@@ -1,11 +1,31 @@
-folders_res = await client.get(
-    f"{base_url}/folders?type=Folder&pagesize=9999",
-    headers=headers(token)
-)
+async def get_folder_list(client, token, base_url):
+    """
+    Fetch all folders from SAP BO
+    """
 
-folders = folders_res.json().get("entries", [])
+    try:
+        res = await client.get(
+            f"{base_url}/folders?type=Folder&pagesize=9999",
+            headers={
+                "X-SAP-LogonToken": token,
+                "Accept": "application/json"
+            }
+        )
 
+        if res.status_code != 200:
+            print("Folder API failed:", res.text)
+            return []
 
+        data = res.json()
+
+        return data.get("entries", [])
+
+    except Exception as e:
+        print("Folder fetch error:", e)
+        return []
+        
+        
+        
 
 
 def get_instance_location(parent_cuid, folders):
