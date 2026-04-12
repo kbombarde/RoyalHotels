@@ -8,7 +8,6 @@ app.add_middleware(SessionMiddleware, secret_key="secret")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ================= ENV =================
 ENV_CONFIG = {
     "DEV": "http://dev-server:6405/biprws/v1",
     "QA": "http://qa-server:6405/biprws/v1"
@@ -31,15 +30,11 @@ async def home():
 async def envs():
     return {"envs": list(ENV_CONFIG.keys())}
 
-# ================= AUTH CHECK =================
+# ================= AUTH =================
 @app.get("/check-auth")
 async def check_auth(req: Request):
-    return {
-        "authenticated": bool(req.session.get("token")),
-        "env": req.session.get("env")
-    }
+    return {"authenticated": bool(req.session.get("token")), "env": req.session.get("env")}
 
-# ================= LOGIN =================
 @app.post("/login")
 async def login(req: Request):
     body = await req.json()
@@ -65,7 +60,6 @@ async def login(req: Request):
 
     return {"success": True}
 
-# ================= LOGOUT =================
 @app.post("/logout")
 async def logout(req: Request):
     req.session.clear()
@@ -93,9 +87,8 @@ async def get_folders(req: Request):
     data = res.json()
     return data.get("entries") or data.get("entries", {}).get("entry") or []
 
-# ================= RECURSIVE FOLDER =================
+# ================= RECURSIVE CUID =================
 async def get_all_child_cuids(client, token, base_url, root):
-
     visited = set([root])
     queue = [root]
 
@@ -120,6 +113,27 @@ async def get_all_child_cuids(client, token, base_url, root):
 
     return list(visited)
 
+# ================= HELPERS =================
+def get_val(obj, key):
+    val = obj.get(key)
+    if isinstance(val, dict):
+        return val.get("value")
+    return val
+
+def extract_server(obj):
+    sched = obj.get("SI_SCHEDULEINFO", {})
+    if isinstance(sched, dict):
+        return sched.get("SI_MACHINE_USED", "")
+    return ""
+
+def extract_error(obj):
+    status = obj.get("SI_STATUSINFO", {})
+    if isinstance(status, dict):
+        level1 = status.get("1", {})
+        subst = level1.get("SI_SUBST_STRINGS", {})
+        return subst.get("1", "")
+    return ""
+
 # ================= QUERY BUILDER =================
 async def build_query(client, token, base_url, filters):
 
@@ -136,19 +150,33 @@ async def build_query(client, token, base_url, filters):
         root_cuid = filters.get("folder")
 
         if root_cuid:
+            cuids = await get_all_child_cuids(client, token, base_url, root_cuid)
 
-            cuids = await get_all_child_cuids(
-                client,
-                token,
-                base_url,
-                root_cuid
-            )
+            # safety limit (avoid BO crash)
+            cuids = cuids[:500]
 
             cuid_list = ",".join([f"'{c}'" for c in cuids])
 
             query += f"\n AND SI_PARENT_FOLDER_CUID IN ({cuid_list})"
 
     return query
+
+# ================= SCHEDULE =================
+async def get_schedules(client, token, base_url, parent_ids):
+
+    result = {}
+
+    for pid in parent_ids:
+        try:
+            res = await client.get(
+                f"{base_url}/documents/{pid}/schedules",
+                headers=headers(token)
+            )
+            result[pid] = res.json().get("entries", [])
+        except:
+            result[pid] = []
+
+    return result
 
 # ================= SAP DATA =================
 @app.post("/sap-data")
@@ -164,7 +192,7 @@ async def sap_data(req: Request):
 
     base_url = ENV_CONFIG.get(env)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
 
         filters = {
             "parent_folder_enabled": body.get("parent_folder_enabled"),
@@ -183,17 +211,45 @@ async def sap_data(req: Request):
             }
         )
 
-    data = res.json()
+        if res.status_code != 200:
+            raise HTTPException(res.status_code, res.text)
 
-    entries = (
-        data.get("entries")
-        or data.get("entries", {}).get("entry")
-        or data.get("feed", {}).get("entry")
-        or []
-    )
+        text = res.text
+        if not text.strip():
+            raise HTTPException(500, "Empty CMS response")
 
-    return {
-        "query": query,
-        "total": len(entries),
-        "data": entries
-    }
+        data = res.json()
+
+        objects = (
+            data.get("entries")
+            or data.get("entries", {}).get("entry")
+            or data.get("feed", {}).get("entry")
+            or []
+        )
+
+        parent_ids = list(set(get_val(o, "SI_PARENTID") for o in objects if get_val(o, "SI_PARENTID")))
+
+        schedule_map = await get_schedules(client, token, base_url, parent_ids)
+
+        result = []
+
+        for idx, obj in enumerate(objects, start=1):
+
+            parent_id = get_val(obj, "SI_PARENTID")
+            sched = (schedule_map.get(parent_id) or [{}])[0]
+
+            result.append({
+                "sr_no": idx,
+                "instance_id": get_val(obj, "SI_ID"),
+                "instance_name": get_val(obj, "SI_NAME"),
+                "location": sched.get("path", ""),
+                "owner": get_val(obj, "SI_OWNER"),
+                "completion_time": get_val(obj, "SI_ENDTIME"),
+                "next_run_time": get_val(obj, "SI_NEXTRUNTIME"),
+                "submission_time": get_val(obj, "SI_CREATION_TIME"),
+                "expiry": sched.get("expiry", ""),
+                "server": extract_server(obj),
+                "error": extract_error(obj)
+            })
+
+    return {"query": query, "total": len(result), "data": result}
