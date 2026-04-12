@@ -46,10 +46,17 @@ Parent Folder
 <table border="1">
 <thead>
 <tr>
-<th>ID</th>
+<th>Sr No</th>
+<th>Instance ID</th>
 <th>Name</th>
+<th>Location</th>
 <th>Owner</th>
-<th>Status</th>
+<th>Completion</th>
+<th>Next Run</th>
+<th>Submission</th>
+<th>Expiry</th>
+<th>Server</th>
+<th>Error</th>
 </tr>
 </thead>
 <tbody id="tbody"></tbody>
@@ -62,7 +69,6 @@ Parent Folder
 async function loadEnvs(){
     const res = await fetch("/envs");
     const data = await res.json();
-
     data.envs.forEach(e=>{
         let o=document.createElement("option");
         o.value=e; o.text=e;
@@ -73,9 +79,7 @@ async function loadEnvs(){
 async function loadFolders(){
     const res = await fetch("/folders");
     const data = await res.json();
-
     folder.innerHTML="";
-
     data.forEach(f=>{
         let o=document.createElement("option");
         o.value=f.cuid;
@@ -92,10 +96,8 @@ function enable(envVal){
     loginDiv.style.display="none";
     authDiv.style.display="block";
     envBadge.innerText=`[${envVal}]`;
-
     mainSection.style.opacity=1;
     mainSection.style.pointerEvents="auto";
-
     loadFolders();
 }
 
@@ -106,15 +108,12 @@ function disable(){
 
 window.onload=async ()=>{
     await loadEnvs();
-
     const res=await fetch("/check-auth");
     const d=await res.json();
-
     d.authenticated?enable(d.env):disable();
 };
 
 async function login(){
-
     const res=await fetch("/login",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -125,12 +124,7 @@ async function login(){
             env:env.value
         })
     });
-
-    if(res.ok){
-        enable(env.value);
-    } else {
-        loginStatus.innerText="Login failed";
-    }
+    res.ok?enable(env.value):loginStatus.innerText="Login failed";
 }
 
 async function logout(){
@@ -161,10 +155,17 @@ async function run(){
     data.data.forEach(r=>{
         tbody.innerHTML+=`
         <tr>
-        <td>${r.SI_ID}</td>
-        <td>${r.SI_NAME}</td>
-        <td>${r.SI_OWNER}</td>
-        <td>${r.SI_SCHEDULE_STATUS}</td>
+        <td>${r.sr_no}</td>
+        <td>${r.instance_id}</td>
+        <td>${r.instance_name}</td>
+        <td>${r.location}</td>
+        <td>${r.owner}</td>
+        <td>${r.completion_time}</td>
+        <td>${r.next_run_time}</td>
+        <td>${r.submission_time}</td>
+        <td>${r.expiry}</td>
+        <td>${r.server}</td>
+        <td>${r.error}</td>
         </tr>`;
     });
 
