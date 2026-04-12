@@ -2,7 +2,16 @@ async def get_folder_map(client, token, base_url):
 
     folder_map = {}
 
+    # ✅ Step 1: get actual root folders
+    res = await client.get(
+        f"{base_url}/folders",
+        headers=headers(token)
+    )
+
+    roots = res.json().get("entries", [])
+
     async def fetch_children(parent_cuid):
+
         try:
             res = await client.get(
                 f"{base_url}/folders/{parent_cuid}/children",
@@ -28,19 +37,31 @@ async def get_folder_map(client, token, base_url):
         except:
             return
 
-    # 🔥 Start from root (this works in most systems)
-    ROOT_CUID = "23"
+    # ✅ Step 2: start recursion from ALL roots
+    for r in roots:
+        root_cuid = r.get("cuid")
 
-    await fetch_children(ROOT_CUID)
+        folder_map[root_cuid] = {
+            "name": r.get("name"),
+            "parent": None
+        }
+
+        await fetch_children(root_cuid)
 
     return folder_map
     
     
     
     
-    
-    
-    def get_location_from_map(parent_cuid, folder_map):
+
+
+
+
+
+def get_location_from_map(parent_cuid, folder_map):
+
+    if not parent_cuid:
+        return ""
 
     path = []
     current = parent_cuid
@@ -50,7 +71,7 @@ async def get_folder_map(client, token, base_url):
         node = folder_map[current]
         name = node.get("name", "")
 
-        if name.lower() not in ["root", "root folder"]:
+        if name and name.lower() not in ["root", "root folder"]:
             path.append(name)
 
         current = node.get("parent")
