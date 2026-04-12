@@ -1,40 +1,37 @@
-async def get_folder_map(client, token, base_url, start_cuid):
+async def get_location_by_parent_chain(client, token, base_url, start_cuid):
 
-    folder_map = {}
+    path = []
+    current = start_cuid
 
-    async def fetch_children(parent_cuid):
+    try:
+        while current:
 
-        try:
             res = await client.get(
-                f"{base_url}/folders/{parent_cuid}/children",
-                params={"type": "Folder"},
+                f"{base_url}/folders/{current}",
                 headers=headers(token)
             )
 
             if res.status_code != 200:
-                return
+                break
 
-            children = res.json().get("entries", [])
+            data = res.json()
 
-            for f in children:
-                cuid = f.get("cuid")
+            name = data.get("name", "")
+            parent = data.get("parent_cuid")
 
-                folder_map[cuid] = {
-                    "name": f.get("name"),
-                    "parent": parent_cuid
-                }
+            # skip root
+            if name and name.lower() not in ["root", "root folder"]:
+                path.append(name)
 
-                await fetch_children(cuid)
+            # stop if no parent OR same cuid (safety)
+            if not parent or parent == current:
+                break
 
-        except:
-            return
+            current = parent
 
-    # ✅ Start from selected folder (NOT root)
-    folder_map[start_cuid] = {
-        "name": "ROOT",
-        "parent": None
-    }
+    except Exception as e:
+        print("Path fetch error:", e)
 
-    await fetch_children(start_cuid)
+    path.reverse()
 
-    return folder_map
+    return "/" + "/".join(path) if path else ""
