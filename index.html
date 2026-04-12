@@ -26,16 +26,15 @@ Environment:
 
 <hr>
 
-<!-- MAIN SECTION -->
+<!-- MAIN -->
 <div id="mainSection" style="opacity:0.5;pointer-events:none;">
 
-Folder: <input id="folder"><br><br>
-
-Page: <input id="page" value="1" size="3">
-Size: <input id="size" value="50" size="3"><br><br>
+Folder:
+<select id="folder"></select><br><br>
 
 <button onclick="run()">Run</button>
 
+<p id="status"></p>
 <p id="count"></p>
 
 <h4>Query</h4>
@@ -65,51 +64,74 @@ Size: <input id="size" value="50" size="3"><br><br>
 
 <script>
 
-// LOAD ENVS
+// ================= LOAD ENVS =================
 async function loadEnvs(){
     const res = await fetch("/envs");
     const data = await res.json();
 
-    const dd = document.getElementById("env");
-    dd.innerHTML="";
-
+    env.innerHTML="";
     data.envs.forEach(e=>{
         let o=document.createElement("option");
         o.value=e; o.text=e;
-        dd.appendChild(o);
+        env.appendChild(o);
     });
 
     const saved=localStorage.getItem("env");
-    if(saved) dd.value=saved;
+    if(saved) env.value=saved;
 }
 
-// ENABLE UI
-function enable(env){
+// ================= LOAD FOLDERS =================
+async function loadFolders(){
+
+    const res = await fetch("/folders");   // 👈 backend endpoint
+    const data = await res.json();
+
+    folder.innerHTML="";
+
+    data.forEach(f=>{
+        let o=document.createElement("option");
+        o.value=f.cuid;      // 👈 IMPORTANT
+        o.text=f.name;
+        folder.appendChild(o);
+    });
+}
+
+// ================= ENABLE UI =================
+function enable(envVal){
     loginDiv.style.display="none";
     authDiv.style.display="block";
-    envBadge.innerText=`[${env}]`;
+    envBadge.innerText=`[${envVal}]`;
+
     mainSection.style.opacity=1;
     mainSection.style.pointerEvents="auto";
+
+    loadFolders();  // 👈 load dropdown after login
 }
 
-// DISABLE UI
+// ================= DISABLE =================
 function disable(){
     loginDiv.style.display="block";
     authDiv.style.display="none";
+
     mainSection.style.opacity=0.5;
     mainSection.style.pointerEvents="none";
 }
 
-// CHECK AUTH
+// ================= CHECK AUTH =================
 window.onload=async ()=>{
     await loadEnvs();
+
     const res=await fetch("/check-auth");
     const d=await res.json();
+
     d.authenticated?enable(d.env):disable();
 };
 
-// LOGIN
+// ================= LOGIN =================
 async function login(){
+
+    status.innerText="Logging in...";
+
     const res=await fetch("/login",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -124,29 +146,33 @@ async function login(){
     if(res.ok){
         localStorage.setItem("env",env.value);
         enable(env.value);
+        status.innerText="";
     } else {
         loginStatus.innerText="Login failed";
     }
 }
 
-// LOGOUT
+// ================= LOGOUT =================
 async function logout(){
     await fetch("/logout",{method:"POST"});
     disable();
 }
 
-// RUN QUERY
+// ================= RUN =================
 async function run(){
 
-    status.innerText="Processing...";
+    // 🔥 LOADER START
+    status.innerText="⏳ Processing... please wait";
+
+    tbody.innerHTML="";
+    query.innerText="";
+    count.innerText="";
 
     const res=await fetch("/sap-data",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-            folder:folder.value,
-            page:page.value,
-            page_size:size.value
+            folder:folder.value   // 👈 CUID
         })
     });
 
@@ -159,8 +185,6 @@ async function run(){
 
     query.innerText=data.query;
     count.innerText="Total Records: "+data.total;
-
-    tbody.innerHTML="";
 
     data.data.forEach(r=>{
         tbody.innerHTML+=`
@@ -179,7 +203,8 @@ async function run(){
         </tr>`;
     });
 
-    status.innerText="Done";
+    // 🔥 LOADER END
+    status.innerText="✅ Done";
 }
 
 </script>
