@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h3>SAP BO Dashboard</h3>
+
+<!-- LOGIN -->
+<div id="loginDiv">
+Username: <input id="username"><br><br>
+Password: <input id="password" type="password"><br><br>
+AuthType: <input id="auth" value="secEnterprise"><br><br>
+
+Environment:
+<select id="env"></select><br><br>
+
+<button onclick="login()">Login</button>
+<p id="loginStatus"></p>
+</div>
+
+<!-- AUTH STATUS -->
+<div id="authDiv" style="display:none;">
+<span style="color:green;">● Authenticated</span>
+<span id="envBadge"></span>
+<button onclick="logout()">Logout</button>
+</div>
+
+<hr>
+
+<!-- MAIN SECTION -->
+<div id="mainSection" style="opacity:0.5;pointer-events:none;">
+
+Folder: <input id="folder"><br><br>
+
+Page: <input id="page" value="1" size="3">
+Size: <input id="size" value="50" size="3"><br><br>
+
+<button onclick="run()">Run</button>
+
+<p id="count"></p>
+
+<h4>Query</h4>
+<pre id="query"></pre>
+
+<table border="1">
+<thead>
+<tr>
+<th>Sr No</th>
+<th>Instance ID</th>
+<th>Instance Name</th>
+<th>Location</th>
+<th>Owner</th>
+<th>Completion Time</th>
+<th>Next Run Time</th>
+<th>Submission Time</th>
+<th>Expiry</th>
+<th>Server</th>
+<th>Error</th>
+</tr>
+</thead>
+
+<tbody id="tbody"></tbody>
+</table>
+
+</div>
+
+<script>
+
+// LOAD ENVS
+async function loadEnvs(){
+    const res = await fetch("/envs");
+    const data = await res.json();
+
+    const dd = document.getElementById("env");
+    dd.innerHTML="";
+
+    data.envs.forEach(e=>{
+        let o=document.createElement("option");
+        o.value=e; o.text=e;
+        dd.appendChild(o);
+    });
+
+    const saved=localStorage.getItem("env");
+    if(saved) dd.value=saved;
+}
+
+// ENABLE UI
+function enable(env){
+    loginDiv.style.display="none";
+    authDiv.style.display="block";
+    envBadge.innerText=`[${env}]`;
+    mainSection.style.opacity=1;
+    mainSection.style.pointerEvents="auto";
+}
+
+// DISABLE UI
+function disable(){
+    loginDiv.style.display="block";
+    authDiv.style.display="none";
+    mainSection.style.opacity=0.5;
+    mainSection.style.pointerEvents="none";
+}
+
+// CHECK AUTH
+window.onload=async ()=>{
+    await loadEnvs();
+    const res=await fetch("/check-auth");
+    const d=await res.json();
+    d.authenticated?enable(d.env):disable();
+};
+
+// LOGIN
+async function login(){
+    const res=await fetch("/login",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            username:username.value,
+            password:password.value,
+            auth:auth.value,
+            env:env.value
+        })
+    });
+
+    if(res.ok){
+        localStorage.setItem("env",env.value);
+        enable(env.value);
+    } else {
+        loginStatus.innerText="Login failed";
+    }
+}
+
+// LOGOUT
+async function logout(){
+    await fetch("/logout",{method:"POST"});
+    disable();
+}
+
+// RUN QUERY
+async function run(){
+
+    status.innerText="Processing...";
+
+    const res=await fetch("/sap-data",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            folder:folder.value,
+            page:page.value,
+            page_size:size.value
+        })
+    });
+
+    const data=await res.json();
+
+    if(!res.ok){
+        status.innerText=data.detail;
+        return;
+    }
+
+    query.innerText=data.query;
+    count.innerText="Total Records: "+data.total;
+
+    tbody.innerHTML="";
+
+    data.data.forEach(r=>{
+        tbody.innerHTML+=`
+        <tr>
+        <td>${r.sr_no}</td>
+        <td>${r.instance_id}</td>
+        <td>${r.instance_name}</td>
+        <td>${r.location}</td>
+        <td>${r.owner}</td>
+        <td>${r.completion_time}</td>
+        <td>${r.next_run_time}</td>
+        <td>${r.submission_time}</td>
+        <td>${r.expiry}</td>
+        <td>${r.server}</td>
+        <td>${r.error}</td>
+        </tr>`;
+    });
+
+    status.innerText="Done";
+}
+
+</script>
+
+</body>
+</html>
