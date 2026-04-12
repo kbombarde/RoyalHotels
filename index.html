@@ -2,57 +2,137 @@
 <html>
 <body>
 
-<h3>SAP BO Final Dashboard</h3>
+<h3>SAP BO Dashboard</h3>
 
-Token: <input id="token" size="80"><br><br>
-Folder CUID: <input id="folder"><br><br>
+<div id="loginDiv">
+Username: <input id="username"><br><br>
+Password: <input id="password" type="password"><br><br>
+AuthType: <input id="auth" value="secEnterprise"><br><br>
+
+Environment:
+<select id="env"></select><br><br>
+
+<button onclick="login()">Login</button>
+<p id="loginStatus"></p>
+</div>
+
+<div id="authDiv" style="display:none;">
+<span style="color:green;">● Authenticated</span>
+<span id="envBadge"></span>
+<button onclick="logout()">Logout</button>
+</div>
+
+<hr>
+
+<div id="mainSection" style="opacity:0.5;pointer-events:none;">
+Folder: <input id="folder"><br><br>
+
+Page: <input id="page" value="1">
+Size: <input id="size" value="50"><br><br>
 
 <button onclick="run()">Run</button>
 
-<p id="status"></p>
-
-<h4>Query</h4>
 <pre id="query"></pre>
 
 <table border="1">
 <thead>
 <tr>
-<th>si_id</th><th>si_parentid</th><th>si_name</th>
-<th>si_kind</th><th>status</th>
-<th>owner</th><th>start</th><th>end</th>
-<th>next_run</th><th>completion</th>
-<th>server</th><th>error</th>
+<th>ID</th><th>Name</th><th>Type</th><th>Status</th>
+<th>Owner</th><th>Start</th><th>End</th>
+<th>Next</th><th>Completion</th>
 </tr>
 </thead>
 <tbody id="tbody"></tbody>
 </table>
+</div>
 
 <script>
-async function run() {
 
-    const token = document.getElementById("token").value;
-    const folder = document.getElementById("folder").value;
-
-    document.getElementById("status").innerText = "Processing...";
-
-    const res = await fetch("/sap-data", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({token, folder})
-    });
-
+async function loadEnvs(){
+    const res = await fetch("/envs");
     const data = await res.json();
 
-    document.getElementById("query").innerText = data.query;
+    const dd = document.getElementById("env");
+    dd.innerHTML="";
 
-    const tbody = document.getElementById("tbody");
-    tbody.innerHTML = "";
+    data.envs.forEach(e=>{
+        let o=document.createElement("option");
+        o.value=e; o.text=e;
+        dd.appendChild(o);
+    });
 
-    data.data.forEach(r => {
-        tbody.innerHTML += `
+    const saved=localStorage.getItem("env");
+    if(saved) dd.value=saved;
+}
+
+function enable(env){
+    loginDiv.style.display="none";
+    authDiv.style.display="block";
+    envBadge.innerText=`[${env}]`;
+    mainSection.style.opacity=1;
+    mainSection.style.pointerEvents="auto";
+}
+
+function disable(){
+    loginDiv.style.display="block";
+    authDiv.style.display="none";
+    mainSection.style.opacity=0.5;
+    mainSection.style.pointerEvents="none";
+}
+
+window.onload=async ()=>{
+    await loadEnvs();
+    const res=await fetch("/check-auth");
+    const d=await res.json();
+    d.authenticated?enable(d.env):disable();
+};
+
+async function login(){
+    const res=await fetch("/login",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            username:username.value,
+            password:password.value,
+            auth:auth.value,
+            env:env.value
+        })
+    });
+
+    if(res.ok){
+        localStorage.setItem("env",env.value);
+        enable(env.value);
+    } else {
+        loginStatus.innerText="Login failed";
+    }
+}
+
+async function logout(){
+    await fetch("/logout",{method:"POST"});
+    disable();
+}
+
+async function run(){
+
+    const res=await fetch("/sap-data",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            folder:folder.value,
+            page:page.value,
+            page_size:size.value
+        })
+    });
+
+    const data=await res.json();
+
+    query.innerText=data.query;
+
+    tbody.innerHTML="";
+    data.data.forEach(r=>{
+        tbody.innerHTML+=`
         <tr>
         <td>${r.si_id}</td>
-        <td>${r.si_parentid}</td>
         <td>${r.si_name}</td>
         <td>${r.si_kind}</td>
         <td>${r.si_schedule_status}</td>
@@ -61,13 +141,10 @@ async function run() {
         <td>${r.si_endtime}</td>
         <td>${r.next_run}</td>
         <td>${r.completion}</td>
-        <td>${r.si_machine_used}</td>
-        <td>${r.si_status_info}</td>
         </tr>`;
     });
-
-    document.getElementById("status").innerText = "Done: " + data.data.length;
 }
+
 </script>
 
 </body>
