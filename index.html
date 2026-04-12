@@ -1,28 +1,177 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h3>SAP BO Dashboard</h3>
+
+<!-- LOGIN -->
+<div id="loginDiv">
+Username: <input id="username"><br><br>
+Password: <input id="password" type="password"><br><br>
+AuthType: <input id="auth" value="secEnterprise"><br><br>
+
+Environment:
+<select id="env"></select><br><br>
+
+<button onclick="login()">Login</button>
+<p id="loginStatus"></p>
+</div>
+
+<div id="authDiv" style="display:none;">
+<span style="color:green;">● Authenticated</span>
+<span id="envBadge"></span>
+<button onclick="logout()">Logout</button>
+</div>
+
+<hr>
+
+<div id="mainSection" style="opacity:0.5;pointer-events:none;">
+
+<label>
+<input type="checkbox" id="pfCheck" onchange="toggleFolder()">
+Parent Folder
+</label>
+
+<select id="folder" disabled></select>
+<br><br>
+
+<button onclick="run()">Run</button>
+
+<p id="status"></p>
+<p id="count"></p>
+
+<h4>Query</h4>
+<pre id="query"></pre>
+
+<table border="1">
+<thead>
+<tr>
+<th>ID</th>
+<th>Name</th>
+<th>Owner</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
+
+</div>
+
+<script>
+
+async function loadEnvs(){
+    const res = await fetch("/envs");
+    const data = await res.json();
+
+    data.envs.forEach(e=>{
+        let o=document.createElement("option");
+        o.value=e; o.text=e;
+        env.appendChild(o);
+    });
+}
+
 async function loadFolders(){
+    const res = await fetch("/folders");
+    const data = await res.json();
 
-    status.innerText = "Loading folders...";
+    folder.innerHTML="";
 
-    try{
-        const res = await fetch("/folders");
+    data.forEach(f=>{
+        let o=document.createElement("option");
+        o.value=f.cuid;
+        o.text=f.name;
+        folder.appendChild(o);
+    });
+}
 
-        const text = await res.text();
-        console.log("RAW FOLDER RESPONSE:", text);
+function toggleFolder(){
+    folder.disabled = !pfCheck.checked;
+}
 
-        const data = JSON.parse(text);
+function enable(envVal){
+    loginDiv.style.display="none";
+    authDiv.style.display="block";
+    envBadge.innerText=`[${envVal}]`;
 
-        folder.innerHTML="";
+    mainSection.style.opacity=1;
+    mainSection.style.pointerEvents="auto";
 
-        data.forEach(f=>{
-            let o=document.createElement("option");
-            o.value=f.cuid;
-            o.text=f.name;
-            folder.appendChild(o);
-        });
+    loadFolders();
+}
 
-        status.innerText = "Folders loaded";
+function disable(){
+    loginDiv.style.display="block";
+    authDiv.style.display="none";
+}
 
-    }catch(e){
-        console.error("Folder load error:", e);
-        status.innerText = "❌ Failed to load folders";
+window.onload=async ()=>{
+    await loadEnvs();
+
+    const res=await fetch("/check-auth");
+    const d=await res.json();
+
+    d.authenticated?enable(d.env):disable();
+};
+
+async function login(){
+
+    const res=await fetch("/login",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            username:username.value,
+            password:password.value,
+            auth:auth.value,
+            env:env.value
+        })
+    });
+
+    if(res.ok){
+        enable(env.value);
+    } else {
+        loginStatus.innerText="Login failed";
     }
 }
+
+async function logout(){
+    await fetch("/logout",{method:"POST"});
+    disable();
+}
+
+async function run(){
+
+    status.innerText="⏳ Processing...";
+
+    const res=await fetch("/sap-data",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            parent_folder_enabled: pfCheck.checked,
+            folder: folder.value
+        })
+    });
+
+    const data=await res.json();
+
+    query.innerText=data.query;
+    count.innerText="Total: "+data.total;
+
+    tbody.innerHTML="";
+
+    data.data.forEach(r=>{
+        tbody.innerHTML+=`
+        <tr>
+        <td>${r.SI_ID}</td>
+        <td>${r.SI_NAME}</td>
+        <td>${r.SI_OWNER}</td>
+        <td>${r.SI_SCHEDULE_STATUS}</td>
+        </tr>`;
+    });
+
+    status.innerText="✅ Done";
+}
+
+</script>
+
+</body>
+</html>
