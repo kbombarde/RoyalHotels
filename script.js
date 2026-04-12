@@ -1,37 +1,56 @@
-async def get_location_by_parent_chain(client, token, base_url, start_cuid):
+async def build_location_from_cms_chain(
+    client,
+    token,
+    base_url,
+    start_cuid,
+    root_cuid
+):
 
     path = []
     current = start_cuid
 
     try:
-        while current:
+        while current and current != root_cuid:
 
-            res = await client.get(
-                f"{base_url}/folders/{current}",
+            query = f"""
+            SELECT SI_NAME, SI_PARENT_FOLDER_CUID
+            FROM CI_INFOOBJECTS
+            WHERE SI_CUID = '{current}'
+            """
+
+            res = await client.post(
+                f"{base_url}/cmsquery",
+                json={"query": query},
                 headers=headers(token)
             )
 
             if res.status_code != 200:
                 break
 
-            data = res.json()
+            entries = res.json().get("entries", [])
 
-            name = data.get("name", "")
-            parent = data.get("parent_cuid")
+            if not entries:
+                break
 
-            # skip root
-            if name and name.lower() not in ["root", "root folder"]:
+            obj = entries[0]
+
+            name = obj.get("SI_NAME")
+            parent = obj.get("SI_PARENT_FOLDER_CUID")
+
+            # append current folder name
+            if name:
                 path.append(name)
 
-            # stop if no parent OR same cuid (safety)
+            # safety break
             if not parent or parent == current:
                 break
 
             current = parent
 
     except Exception as e:
-        print("Path fetch error:", e)
+        print("Path build error:", e)
 
+    # reverse to correct order
     path.reverse()
 
     return "/" + "/".join(path) if path else ""
