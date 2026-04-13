@@ -1,107 +1,46 @@
-import asyncio
+import requests
 
-async def get_full_folder_map(client, token, base_url):
+# 🔐 Config
+LOGON_TOKEN = "YOUR_LOGON_TOKEN"
+ROOT_FOLDER_CUID = "YOUR_ROOT_FOLDER_CUID"   # e.g. "Af3kL9abcde123"
 
-    folder_map = {}
+BASE_URL = "http://<BO_SERVER>:<PORT>/biprws/v1"
 
-    # 🔥 limit concurrency (VERY IMPORTANT)
-    semaphore = asyncio.Semaphore(10)
+HEADERS = {
+    "X-SAP-LogonToken": LOGON_TOKEN,
+    "Accept": "application/json"
+}
 
-    async def fetch_children(parent_cuid):
 
-        async with semaphore:  # limit concurrent calls
+def get_children_by_cuid(folder_cuid):
+    url = f"{BASE_URL}/folders/{folder_cuid}/children"
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+    return response.json().get("entries", [])
 
-            try:
-                res = await client.get(
-                    f"{base_url}/folders/{parent_cuid}/children",
-                    params={"type": "Folder"},
-                    headers=headers(token)
-                )
 
-                children = res.json().get("entries", [])
+def print_tree(folder, indent=""):
+    print(f"{indent}📁 {folder['name']} ({folder['cuid']})")
 
-                tasks = []
+    children = get_children_by_cuid(folder['cuid'])
 
-                for f in children:
-                    cuid = f.get("cuid")
+    for child in children:
+        # Ensure only folders
+        if child.get("type") == "Folder":
+            print_tree(child, indent + "    ")
 
-                    folder_map[cuid] = {
-                        "name": f.get("name"),
-                        "parent": parent_cuid
-                    }
 
-                    # 🔥 schedule next level
-                    tasks.append(fetch_children(cuid))
+def get_root_folder_by_cuid():
+    url = f"{BASE_URL}/folders/{ROOT_FOLDER_CUID}"
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+    return response.json()
 
-                # 🔥 run all children in parallel
-                if tasks:
-                    await asyncio.gather(*tasks)
 
-            except:
-                return
+def build_folder_tree():
+    root = get_root_folder_by_cuid()
+    print_tree(root)
 
-    # 🔥 Step 1: get root folders
-    res = await client.get(
-        f"{base_url}/folders",
-        params={"page": 1, "pagesize": 9999},
-        headers=headers(token)
-    )
 
-    roots = res.json().get("entries", [])
-
-    # 🔥 Step 2: process roots in parallel
-    tasks = []
-
-    for r in roots:
-        cuid = r.get("cuid")
-
-        folder_map[cuid] = {
-            "name": r.get("name"),
-            "parent": None
-        }
-
-        tasks.append(fetch_children(cuid))
-
-    # 🔥 run root-level recursion in parallel
-    await asyncio.gather(*tasks)
-
-    return folder_map
-    
-    
-    
-    
-    
-    
-    
-    
-    def build_location(folder_map, start_cuid):
-
-    path = []
-    current = start_cuid
-
-    while current and current in folder_map:
-
-        node = folder_map[current]
-
-        name = node["name"]
-        parent = node["parent"]
-
-        if name and name.lower() not in ["root", "root folder"]:
-            path.append(name)
-
-        if not parent or parent == current:
-            break
-
-        current = parent
-
-    path.reverse()
-
-    return "/" + "/".join(path) if path else ""
-    
-    
-    
-    
-    
-    
-    
-    
+if __name__ == "__main__":
+    build_folder_tree()
