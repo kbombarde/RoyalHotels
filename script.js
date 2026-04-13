@@ -19,9 +19,6 @@ def headers(token):
         "Accept": "application/json"
     }
 
-# ================= CACHE =================
-location_cache = {}
-
 # ================= HELPERS =================
 def get_val(obj, key):
     val = obj.get(key)
@@ -30,24 +27,76 @@ def get_val(obj, key):
     return val
 
 def extract_server(obj):
-    return obj.get("SI_SCHEDULEINFO", {}).get("SI_MACHINE_USED", "")
+    sched = obj.get("SI_SCHEDULEINFO", {})
+    if isinstance(sched, dict):
+        return sched.get("SI_MACHINE_USED", "")
+    return ""
 
 def extract_error(obj):
-    return obj.get("SI_STATUSINFO", {}).get("1", {}).get("SI_SUBST_STRINGS", {}).get("1", "")
+    status = obj.get("SI_STATUSINFO", {})
+    if isinstance(status, dict):
+        lvl = status.get("1", {})
+        subst = lvl.get("SI_SUBST_STRINGS", {})
+        return subst.get("1", "")
+    return ""
 
-# ================= LOCATION =================
-async def get_location(client, token, base_url, cuid):
+# ================= RECURSIVE FOLDER =================
+async def get_all_child_cuids(client, token, base_url, root):
+    visited = set([root])
+    queue = [root]
 
-    if not cuid:
-        return ""
+    while queue:
+        current = queue.pop(0)
 
-    if cuid in location_cache:
-        return location_cache[cuid]
+        try:
+            res = await client.get(
+                f"{base_url}/folders/{current}/children",
+                params={"type": "Folder"},
+                headers=headers(token)
+            )
+
+            for f in res.json().get("entries", []):
+                cuid = f.get("cuid")
+                if cuid and cuid not in visited:
+                    visited.add(cuid)
+                    queue.append(cuid)
+
+        except:
+            continue
+
+    return list(visited)
+
+# ================= QUERY BUILDER =================
+async def build_query(client, token, base_url, filters):
+
+    query = """
+    SELECT SI_ID, SI_PARENTID, SI_NAME, SI_KIND, SI_SCHEDULE_STATUS,
+    SI_PARENT_FOLDER_CUID, SI_OWNER, SI_STARTTIME, SI_ENDTIME,
+    SI_NEXTRUNTIME, SI_CREATION_TIME, SI_SCHEDULEINFO, SI_STATUSINFO
+    FROM CI_INFOOBJECTS, CI_APPOBJECTS ,CI_SYSTEMOBJECTS
+    WHERE SI_INSTANCE = 1
+    """
+
+    if filters.get("parent_folder_enabled"):
+
+        root_cuid = filters.get("folder")
+
+        if root_cuid:
+            cuids = await get_all_child_cuids(client, token, base_url, root_cuid)
+            cuid_list = ",".join([f"'{c}'" for c in cuids])
+            query += f" AND SI_PARENT_FOLDER_CUID IN ({cuid_list})"
+
+    return query
+
+# ================= LOCATION (CMS RECURSIVE) =================
+async def build_location(client, token, base_url, cuid):
 
     path = []
     current = cuid
+    depth = 0
 
-    while current:
+    while current and depth < 20:
+        depth += 1
 
         query = f"""
         SELECT SI_NAME, SI_PARENT_FOLDER_CUID
@@ -56,7 +105,7 @@ async def get_location(client, token, base_url, cuid):
         """
 
         res = await client.post(
-            f"{base_url}/cmsquery?page=1&pagesize=1",
+            f"{base_url}/cmsquery",
             json={"query": query},
             headers=headers(token)
         )
@@ -79,29 +128,12 @@ async def get_location(client, token, base_url, cuid):
         current = parent
 
     path.reverse()
-
-    final = "/" + "/".join(path) if path else ""
-    location_cache[cuid] = final
-
-    return final
+    return "/" + "/".join(path) if path else ""
 
 # ================= HOME =================
 @app.get("/")
 async def home():
     return FileResponse(os.path.join(BASE_DIR, "templates", "index.html"))
-
-# ================= ENVS =================
-@app.get("/envs")
-async def envs():
-    return {"envs": list(ENV_CONFIG.keys())}
-
-# ================= AUTH =================
-@app.get("/check-auth")
-async def check_auth(req: Request):
-    return {
-        "authenticated": bool(req.session.get("token")),
-        "env": req.session.get("env")
-    }
 
 # ================= LOGIN =================
 @app.post("/login")
@@ -137,7 +169,25 @@ async def logout(req: Request):
     req.session.clear()
     return {"success": True}
 
-# ================= DATA =================
+# ================= FOLDERS =================
+@app.get("/folders")
+async def get_folders(req: Request):
+
+    token = req.session.get("token")
+    env = req.session.get("env")
+
+    base_url = ENV_CONFIG.get(env)
+
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            f"{base_url}/folders",
+            params={"page":1,"pagesize":9999},
+            headers=headers(token)
+        )
+
+        return res.json().get("entries", [])
+
+# ================= SAP DATA =================
 @app.post("/sap-data")
 async def sap_data(req: Request):
 
@@ -146,64 +196,47 @@ async def sap_data(req: Request):
     token = req.session.get("token")
     env = req.session.get("env")
 
-    if not token:
-        raise HTTPException(401, "Not authenticated")
-
     base_url = ENV_CONFIG.get(env)
-
-    page = body.get("page", 1)
-    page_size = 50
-
-    query = """
-    SELECT SI_ID, SI_PARENTID, SI_NAME, SI_SCHEDULE_STATUS,
-    SI_PARENT_FOLDER_CUID, SI_OWNER, SI_ENDTIME,
-    SI_NEXTRUNTIME, SI_CREATION_TIME,
-    SI_SCHEDULEINFO, SI_STATUSINFO
-    FROM CI_INFOOBJECTS, CI_APPOBJECTS ,CI_SYSTEMOBJECTS
-    WHERE SI_INSTANCE = 1
-    """
 
     async with httpx.AsyncClient(timeout=60.0) as client:
 
+        filters = {
+            "parent_folder_enabled": body.get("parent_folder_enabled"),
+            "folder": body.get("folder")
+        }
+
+        query = await build_query(client, token, base_url, filters)
+
         res = await client.post(
-            f"{base_url}/cmsquery?page={page}&pagesize={page_size}",
+            f"{base_url}/cmsquery?page=1&pagesize=9999",
             json={"query": query},
             headers=headers(token)
         )
 
-        data = res.json()
-        objects = data.get("entries", [])
+        objects = res.json().get("entries", [])
 
-        # 🔥 Unique folder CUIDs
-        unique_cuids = list(set(
-            get_val(o, "SI_PARENT_FOLDER_CUID")
-            for o in objects if get_val(o, "SI_PARENT_FOLDER_CUID")
-        ))
-
-        # 🔥 Resolve locations in parallel
-        tasks = [
-            get_location(client, token, base_url, cuid)
-            for cuid in unique_cuids
-        ]
-
-        locations = await asyncio.gather(*tasks)
-
-        location_map = dict(zip(unique_cuids, locations))
-
-        # 🔥 Build result
         result = []
 
         for idx, obj in enumerate(objects, start=1):
 
+            location = await build_location(
+                client,
+                token,
+                base_url,
+                get_val(obj, "SI_PARENT_FOLDER_CUID")
+            )
+
             result.append({
                 "sr_no": idx,
+                "instance_id": get_val(obj, "SI_ID"),
                 "instance_name": get_val(obj, "SI_NAME"),
+                "location": location,
                 "owner": get_val(obj, "SI_OWNER"),
-                "location": location_map.get(get_val(obj, "SI_PARENT_FOLDER_CUID"), ""),
                 "completion_time": get_val(obj, "SI_ENDTIME"),
+                "next_run_time": get_val(obj, "SI_NEXTRUNTIME"),
+                "submission_time": get_val(obj, "SI_CREATION_TIME"),
                 "server": extract_server(obj),
-                "error": extract_error(obj),
-                "status": get_val(obj, "SI_SCHEDULE_STATUS")
+                "error": extract_error(obj)
             })
 
     return {"data": result}
