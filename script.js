@@ -9,7 +9,8 @@ app.add_middleware(SessionMiddleware, secret_key="secret")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 ENV_CONFIG = {
-    "DEV": "http://dev-server:6405/biprws/v1"
+    "LN0043DEV": "http://eun05611:6405/biprws/v1",
+    "JP0043DEV": "http://jpn018266:6405/biprws/v1"
 }
 
 # ================= HEADERS =================
@@ -40,23 +41,6 @@ def extract_error(obj):
         return subst.get("1", "")
     return ""
 
-# ================= SCHEDULE FETCH =================
-async def get_schedules(client, token, base_url, parent_ids):
-
-    result = {}
-
-    for pid in parent_ids:
-        try:
-            res = await client.get(
-                f"{base_url}/documents/{pid}/schedules",
-                headers=headers(token)
-            )
-            result[pid] = res.json().get("entries", [])
-        except:
-            result[pid] = []
-
-    return result
-
 # ================= HOME =================
 @app.get("/")
 async def home():
@@ -66,6 +50,14 @@ async def home():
 @app.get("/envs")
 async def envs():
     return {"envs": list(ENV_CONFIG.keys())}
+
+# ================= CHECK AUTH =================
+@app.get("/check-auth")
+async def check_auth(req: Request):
+    return {
+        "authenticated": bool(req.session.get("token")),
+        "env": req.session.get("env")
+    }
 
 # ================= LOGIN =================
 @app.post("/login")
@@ -101,6 +93,50 @@ async def logout(req: Request):
     req.session.clear()
     return {"success": True}
 
+# ================= FOLDERS =================
+@app.get("/folders")
+async def get_folders(req: Request):
+
+    token = req.session.get("token")
+    env = req.session.get("env")
+
+    if not token:
+        raise HTTPException(401, "Not authenticated")
+
+    base_url = ENV_CONFIG.get(env)
+
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            f"{base_url}/folders",
+            params={"page":1,"pagesize":9999},
+            headers=headers(token)
+        )
+
+        data = res.json()
+
+        return (
+            data.get("entries")
+            or data.get("entries", {}).get("entry")
+            or []
+        )
+
+# ================= SCHEDULE =================
+async def get_schedules(client, token, base_url, parent_ids):
+
+    result = {}
+
+    for pid in parent_ids:
+        try:
+            res = await client.get(
+                f"{base_url}/documents/{pid}/schedules",
+                headers=headers(token)
+            )
+            result[pid] = res.json().get("entries", [])
+        except:
+            result[pid] = []
+
+    return result
+
 # ================= SAP DATA =================
 @app.post("/sap-data")
 async def sap_data(req: Request):
@@ -123,7 +159,6 @@ async def sap_data(req: Request):
 
     async with httpx.AsyncClient(timeout=60.0) as client:
 
-        # CMS QUERY
         res = await client.post(
             f"{base_url}/cmsquery?page=1&pagesize=9999",
             json={"query": query},
@@ -131,15 +166,18 @@ async def sap_data(req: Request):
         )
 
         data = res.json()
-        objects = data.get("entries", [])
 
-        # 🔥 Get parent IDs
+        objects = (
+            data.get("entries")
+            or data.get("entries", {}).get("entry")
+            or []
+        )
+
         parent_ids = list(set(
             get_val(o, "SI_PARENTID")
             for o in objects if get_val(o, "SI_PARENTID")
         ))
 
-        # 🔥 Fetch schedules
         schedule_map = await get_schedules(client, token, base_url, parent_ids)
 
         result = []
@@ -155,11 +193,9 @@ async def sap_data(req: Request):
                 "sr_no": idx,
                 "instance_id": get_val(obj, "SI_ID"),
                 "instance_name": get_val(obj, "SI_NAME"),
-                "location": sched.get("path", ""),  # 🔥 FROM SCHEDULE
+                "location": sched.get("path", ""),  # 🔥 WORKING VERSION
                 "owner": get_val(obj, "SI_OWNER"),
                 "completion_time": get_val(obj, "SI_ENDTIME"),
-                "next_run_time": get_val(obj, "SI_NEXTRUNTIME"),
-                "submission_time": get_val(obj, "SI_CREATION_TIME"),
                 "server": extract_server(obj),
                 "error": extract_error(obj)
             })
