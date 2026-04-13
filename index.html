@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Minimal BO App</title>
+<title>BO Minimal App</title>
 </head>
 
 <body>
 
-<h2>Login</h2>
+<h3>Login</h3>
 
 <div id="loginDiv">
     <input id="username" placeholder="Username"><br><br>
@@ -25,6 +25,13 @@
 
 <hr>
 
+<div id="authBar" style="display:none;">
+    Authenticated: <b id="envName"></b>
+    <button onclick="logout()">Logout</button>
+</div>
+
+<hr>
+
 <div id="mainSection" style="display:none;">
 
     <h3>Filters</h3>
@@ -37,9 +44,7 @@
 
     <br><br>
 
-    <h3>Results</h3>
-
-    <table border="1" id="dataTable">
+    <table border="1">
         <thead>
             <tr>
                 <th>#</th>
@@ -62,10 +67,8 @@
 
 <script>
 
-// ================= INIT =================
 window.onload = async () => {
 
-    // Load environments
     const res = await fetch("/envs");
     const data = await res.json();
 
@@ -76,19 +79,15 @@ window.onload = async () => {
         env.appendChild(o);
     });
 
-    // Check session persistence
     const authRes = await fetch("/check-auth", { credentials: "include" });
     const authData = await authRes.json();
 
     if (authData.authenticated) {
-        enableApp();
+        enableApp(authData.env);
     }
 };
 
-// ================= LOGIN =================
 async function login(){
-
-    loginStatus.innerText = "Logging in...";
 
     const res = await fetch("/login",{
         method:"POST",
@@ -103,33 +102,32 @@ async function login(){
     });
 
     if(res.ok){
-        enableApp();
+        enableApp(env.value);
     } else {
         loginStatus.innerText = "Login failed";
     }
 }
 
-// ================= ENABLE APP =================
-async function enableApp(){
+async function enableApp(envVal){
 
     loginDiv.style.display = "none";
     mainSection.style.display = "block";
+    authBar.style.display = "block";
+
+    envName.innerText = envVal;
 
     await loadFolders();
 }
 
-// ================= LOGOUT =================
 async function logout(){
     await fetch("/logout",{method:"POST"});
     location.reload();
 }
 
-// ================= TOGGLE FOLDER =================
 function toggleFolder(){
     folderSelect.disabled = !pfCheck.checked;
 }
 
-// ================= LOAD FOLDERS =================
 async function loadFolders(){
 
     const res = await fetch("/folders", { credentials: "include" });
@@ -145,7 +143,6 @@ async function loadFolders(){
     });
 }
 
-// ================= FETCH DATA =================
 async function fetchData(){
 
     tableBody.innerHTML = "<tr><td colspan='11'>Loading...</td></tr>";
@@ -183,7 +180,6 @@ async function fetchData(){
     });
 }
 
-// ================= SAFE VALUE =================
 function getVal(obj, key){
 
     const val = obj[key];
