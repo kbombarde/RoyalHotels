@@ -1,54 +1,107 @@
 import asyncio
 
-async def fetch_all_cms_data(client, token, base_url, query):
+async def get_full_folder_map(client, token, base_url):
 
-    page_size = 200
+    folder_map = {}
 
-    # First call to get total count
-    first = await client.post(
-        f"{base_url}/v1/cmsquery?page=1&pagesize={page_size}",
-        json={"query": query},
-        headers=headers(token)
-    )
+    # 🔥 limit concurrency (VERY IMPORTANT)
+    semaphore = asyncio.Semaphore(10)
 
-    data = first.json()
+    async def fetch_children(parent_cuid):
 
-    entries = data.get("entries", [])
-    total = int(first.headers.get("X-Total-Count", len(entries)))
+        async with semaphore:  # limit concurrent calls
 
-    total_pages = (total // page_size) + 1
+            try:
+                res = await client.get(
+                    f"{base_url}/folders/{parent_cuid}/children",
+                    params={"type": "Folder"},
+                    headers=headers(token)
+                )
 
-    # 🔥 Parallel calls
-    async def fetch(page):
-        res = await client.post(
-            f"{base_url}/v1/cmsquery?page={page}&pagesize={page_size}",
-            json={"query": query},
-            headers=headers(token)
-        )
-        d = res.json()
-        return d.get("entries", [])
+                children = res.json().get("entries", [])
 
-    tasks = [fetch(p) for p in range(1, total_pages+1)]
+                tasks = []
 
-    results = await asyncio.gather(*tasks)
+                for f in children:
+                    cuid = f.get("cuid")
 
-    all_entries = [item for sublist in results for item in sublist]
+                    folder_map[cuid] = {
+                        "name": f.get("name"),
+                        "parent": parent_cuid
+                    }
 
-    return all_entries
-    
-    
-    
-    
+                    # 🔥 schedule next level
+                    tasks.append(fetch_children(cuid))
 
+                # 🔥 run all children in parallel
+                if tasks:
+                    await asyncio.gather(*tasks)
 
-async def get_folder_map(client, token, base_url):
+            except:
+                return
 
+    # 🔥 Step 1: get root folders
     res = await client.get(
         f"{base_url}/folders",
-        params={"page":1,"pagesize":9999},
+        params={"page": 1, "pagesize": 9999},
         headers=headers(token)
     )
 
-    folders = res.json().get("entries", [])
+    roots = res.json().get("entries", [])
 
-    return {f["cuid"]: f["name"] for f in folders}
+    # 🔥 Step 2: process roots in parallel
+    tasks = []
+
+    for r in roots:
+        cuid = r.get("cuid")
+
+        folder_map[cuid] = {
+            "name": r.get("name"),
+            "parent": None
+        }
+
+        tasks.append(fetch_children(cuid))
+
+    # 🔥 run root-level recursion in parallel
+    await asyncio.gather(*tasks)
+
+    return folder_map
+    
+    
+    
+    
+    
+    
+    
+    
+    def build_location(folder_map, start_cuid):
+
+    path = []
+    current = start_cuid
+
+    while current and current in folder_map:
+
+        node = folder_map[current]
+
+        name = node["name"]
+        parent = node["parent"]
+
+        if name and name.lower() not in ["root", "root folder"]:
+            path.append(name)
+
+        if not parent or parent == current:
+            break
+
+        current = parent
+
+    path.reverse()
+
+    return "/" + "/".join(path) if path else ""
+    
+    
+    
+    
+    
+    
+    
+    
