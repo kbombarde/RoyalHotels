@@ -12,8 +12,9 @@ HEADERS = {
     "Accept": "application/json"
 }
 
-# Global map: cuid -> node
-folder_map = {}
+# Maps
+folder_map = {}      # cuid -> {name, children[]}
+parent_map = {}      # cuid -> parent_cuid
 
 
 def get_children(cuid):
@@ -35,40 +36,37 @@ def build_tree_parallel(root_cuid):
                 parent_cuid = futures[future]
                 children = future.result()
 
-                # Ensure parent exists
-                folder_map.setdefault(parent_cuid, {
-                    "name": "ROOT",
-                    "children": []
-                })
-
                 for child in children:
                     if child.get("type") != "Folder":
                         continue
 
                     cuid = child["cuid"]
 
-                    # Add child node
                     folder_map[cuid] = {
                         "name": child["name"],
                         "children": []
                     }
 
-                    # Link parent -> child
+                    parent_map[cuid] = parent_cuid
+
                     folder_map[parent_cuid]["children"].append(cuid)
 
-                    # Add to next level queue
                     queue.append(cuid)
 
 
-def print_tree(cuid, indent=""):
-    node = folder_map.get(cuid)
-    if not node:
-        return
+def get_path(target_cuid):
+    path = []
 
-    print(f"{indent}📁 {node['name']} ({cuid})")
+    while target_cuid in folder_map:
+        path.append(folder_map[target_cuid]["name"])
+        if target_cuid == ROOT_FOLDER_CUID:
+            break
+        target_cuid = parent_map.get(target_cuid)
 
-    for child_cuid in node["children"]:
-        print_tree(child_cuid, indent + "    ")
+        if not target_cuid:
+            break
+
+    return " / ".join(reversed(path))
 
 
 def main():
@@ -80,7 +78,17 @@ def main():
 
     build_tree_parallel(ROOT_FOLDER_CUID)
 
-    print_tree(ROOT_FOLDER_CUID)
+    # 🔍 Ask user for CUID
+    target_cuid = input("Enter Folder CUID: ").strip()
+
+    if target_cuid not in folder_map:
+        print("❌ CUID not found in folder tree")
+        return
+
+    path = get_path(target_cuid)
+
+    print("\n📂 Folder Path:")
+    print(path)
 
 
 if __name__ == "__main__":
