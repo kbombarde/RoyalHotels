@@ -1,56 +1,113 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Instance Manager</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>SAP BO Instance Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background: #f5f7fa;
+        }
+        .card {
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        table {
+            font-size: 13px;
+        }
+        thead {
+            position: sticky;
+            top: 0;
+        }
+    </style>
 </head>
 
 <body class="p-4">
 
 <div class="container">
 
-<!-- LOGIN -->
-<div id="loginDiv" class="card p-3 mb-3">
-<div class="row g-2">
-<input class="form-control col" id="username" placeholder="Username">
-<input class="form-control col" id="password" type="password" placeholder="Password">
+    <!-- LOGIN -->
+    <div id="loginDiv" class="card p-4 mb-4">
+        <h5 class="mb-3">Login</h5>
 
-<select id="auth" class="form-select col">
-<option value="secEnterprise">Enterprise</option>
-<option value="secLDAP">LDAP</option>
-</select>
+        <div class="row g-2">
 
-<select id="env" class="form-select col"></select>
+            <div class="col-md-2">
+                <input id="username" class="form-control" placeholder="Username">
+            </div>
 
-<button class="btn btn-primary col" onclick="login()">Login</button>
-</div>
-</div>
+            <div class="col-md-2">
+                <input id="password" type="password" class="form-control" placeholder="Password">
+            </div>
 
-<!-- MAIN -->
-<div id="mainSection" style="opacity:0.5;pointer-events:none;">
+            <div class="col-md-2">
+                <select id="auth" class="form-select">
+                    <option value="secEnterprise">Enterprise</option>
+                    <option value="secLDAP">LDAP</option>
+                </select>
+            </div>
 
-<table class="table table-striped mt-3">
-<thead class="table-dark">
-<tr>
-<th>#</th>
-<th>Name</th>
-<th>Location</th>
-<th>Owner</th>
-<th>Completion</th>
-<th>Server</th>
-<th>Error</th>
-</tr>
-</thead>
-<tbody id="tbody"></tbody>
-</table>
+            <div class="col-md-2">
+                <select id="env" class="form-select"></select>
+            </div>
 
-</div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" onclick="login()">Login</button>
+            </div>
+
+        </div>
+
+        <div id="loginStatus" class="text-danger mt-2"></div>
+    </div>
+
+    <!-- AUTH BAR -->
+    <div id="authBar" class="mb-3" style="display:none;">
+        <span class="badge bg-success">Authenticated</span>
+        <span id="envBadge" class="badge bg-dark"></span>
+        <button class="btn btn-sm btn-danger ms-2" onclick="logout()">Logout</button>
+    </div>
+
+    <!-- MAIN -->
+    <div id="mainSection" class="card p-3" style="opacity:0.5;pointer-events:none;">
+
+        <div class="d-flex justify-content-between mb-2">
+            <h5>Instances</h5>
+            <button class="btn btn-sm btn-secondary" onclick="loadData()">Refresh</button>
+        </div>
+
+        <div class="table-responsive" style="max-height:70vh;">
+            <table class="table table-striped table-hover">
+
+                <thead class="table-dark">
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Location</th>
+                        <th>Owner</th>
+                        <th>Completion</th>
+                        <th>Server</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+
+                <tbody id="tbody"></tbody>
+
+            </table>
+        </div>
+
+    </div>
 
 </div>
 
 <script>
 
+// ================= LOGIN =================
 async function login(){
+
+    loginStatus.innerText = "Logging in...";
 
     const res = await fetch("/login",{
         method:"POST",
@@ -60,48 +117,73 @@ async function login(){
             password:password.value,
             auth:auth.value,
             env:env.value
-        })
+        }),
+        credentials:"include"
     });
 
     if(res.ok){
         loginDiv.style.display="none";
+        authBar.style.display="block";
+        envBadge.innerText = env.value;
+
         mainSection.style.opacity=1;
         mainSection.style.pointerEvents="auto";
+
         loadData();
+    } else {
+        loginStatus.innerText = "Login failed";
     }
 }
 
+// ================= LOGOUT =================
+async function logout(){
+    await fetch("/logout",{method:"POST"});
+    location.reload();
+}
+
+// ================= LOAD DATA =================
 async function loadData(){
 
+    tbody.innerHTML = `<tr><td colspan="7">Loading...</td></tr>`;
+
     const res = await fetch("/sap-data",{
-        method:"POST"
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({}),
+        credentials:"include"
     });
 
     const data = await res.json();
 
+    tbody.innerHTML = "";
+
     data.data.forEach(r=>{
         tbody.innerHTML += `
         <tr>
-        <td>${r.sr_no}</td>
-        <td>${r.instance_name}</td>
-        <td>${r.location}</td>
-        <td>${r.owner}</td>
-        <td>${r.completion_time}</td>
-        <td>${r.server}</td>
-        <td>${r.error}</td>
+            <td>${r.sr_no}</td>
+            <td>${r.instance_name || ""}</td>
+            <td>${r.location || ""}</td>
+            <td>${r.owner || ""}</td>
+            <td>${r.completion_time || ""}</td>
+            <td>${r.server || ""}</td>
+            <td>${r.error || ""}</td>
         </tr>`;
     });
 }
 
+// ================= INIT =================
 window.onload = async ()=>{
+
     const res = await fetch("/envs");
     const data = await res.json();
 
     data.envs.forEach(e=>{
         let o=document.createElement("option");
-        o.value=e; o.text=e;
+        o.value=e;
+        o.text=e;
         env.appendChild(o);
     });
+
 };
 
 </script>
