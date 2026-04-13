@@ -6,6 +6,9 @@
 <style>
 body { background:#f4f6f9; }
 .loader { display:none; text-align:center; }
+.badge-success { background:#16a34a; }
+.badge-failed { background:#dc2626; }
+.badge-running { background:#f59e0b; }
 </style>
 </head>
 
@@ -15,35 +18,22 @@ body { background:#f4f6f9; }
 
 <!-- LOGIN -->
 <div id="loginDiv" class="card p-3 mb-3">
-<h5>Login</h5>
-
 <div class="row g-2">
-<div class="col"><input class="form-control" id="username" placeholder="Username"></div>
-<div class="col"><input class="form-control" id="password" type="password" placeholder="Password"></div>
-<div class="col">
-<select id="auth" class="form-select">
+<input class="form-control col" id="username" placeholder="Username">
+<input class="form-control col" id="password" type="password" placeholder="Password">
+
+<select id="auth" class="form-select col">
 <option value="secEnterprise">Enterprise</option>
 <option value="secLDAP">LDAP</option>
 </select>
-</div>
-<div class="col">
-<select id="env" class="form-select"></select>
-</div>
-<div class="col">
-<button class="btn btn-primary w-100" onclick="login()">Login</button>
+
+<select id="env" class="form-select col"></select>
+
+<button class="btn btn-primary col" onclick="login()">Login</button>
 </div>
 </div>
 
-<p id="loginStatus" class="text-danger mt-2"></p>
-</div>
-
-<!-- AUTH BAR -->
-<div id="authDiv" style="display:none;">
-<span class="badge bg-success">Authenticated</span>
-<button class="btn btn-sm btn-danger ms-2" onclick="logout()">Logout</button>
-</div>
-
-<!-- TABLE -->
+<!-- MAIN -->
 <div id="mainSection" style="opacity:0.5;pointer-events:none;">
 
 <div class="loader" id="loader">
@@ -75,33 +65,10 @@ body { background:#f4f6f9; }
 let page = 1;
 let loading = false;
 
-// ================= INIT =================
-async function loadEnvs(){
-    const res = await fetch("/envs");
-    const data = await res.json();
-    data.envs.forEach(e=>{
-        let o=document.createElement("option");
-        o.value=e; o.text=e;
-        env.appendChild(o);
-    });
-}
-
-function enable(){
-    loginDiv.style.display="none";
-    authDiv.style.display="block";
-    mainSection.style.opacity=1;
-    mainSection.style.pointerEvents="auto";
-    loadMore();
-}
-
-function disable(){
-    loginDiv.style.display="block";
-    authDiv.style.display="none";
-}
-
 // ================= LOGIN =================
 async function login(){
-    const res=await fetch("/login",{
+
+    const res = await fetch("/login",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
@@ -112,12 +79,12 @@ async function login(){
         })
     });
 
-    res.ok ? enable() : loginStatus.innerText="Login failed";
-}
-
-async function logout(){
-    await fetch("/logout",{method:"POST"});
-    disable();
+    if(res.ok){
+        loginDiv.style.display="none";
+        mainSection.style.opacity=1;
+        mainSection.style.pointerEvents="auto";
+        loadMore();
+    }
 }
 
 // ================= DATA =================
@@ -155,13 +122,23 @@ async function loadMore(){
     loader.style.display="none";
 }
 
+// ================= SCROLL =================
 window.onscroll = () => {
     if(window.innerHeight + window.scrollY >= document.body.offsetHeight){
         loadMore();
     }
 };
 
-window.onload = loadEnvs;
+// ================= INIT =================
+window.onload = async ()=>{
+    const res = await fetch("/envs");
+    const data = await res.json();
+    data.envs.forEach(e=>{
+        let o=document.createElement("option");
+        o.value=e; o.text=e;
+        env.appendChild(o);
+    });
+};
 
 </script>
 
