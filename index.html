@@ -1,11 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Minimal BO App</title>
+</head>
+
+<body>
+
+<h3>Login</h3>
+
+<div id="loginDiv">
+    <input id="username" placeholder="Username"><br><br>
+    <input id="password" type="password" placeholder="Password"><br><br>
+
+    <select id="auth">
+        <option value="secEnterprise">Enterprise</option>
+        <option value="secLDAP">LDAP</option>
+    </select><br><br>
+
+    <select id="env"></select><br><br>
+
+    <button onclick="login()">Login</button>
+    <p id="loginStatus"></p>
+</div>
+
+<hr>
+
+<div id="mainSection" style="display:none;">
+
+    <h3>Filters</h3>
+
+    <input type="checkbox" id="pfCheck" onchange="toggleFolder()"> Parent Folder<br><br>
+
+    <select id="folderSelect" disabled></select><br><br>
+
+    <button onclick="logout()">Logout</button>
+
+</div>
+
+<script>
+
+// ================= INIT =================
+window.onload = async () => {
+
+    // Load envs
+    const res = await fetch("/envs");
+    const data = await res.json();
+
+    data.envs.forEach(e => {
+        let o = document.createElement("option");
+        o.value = e;
+        o.text = e;
+        env.appendChild(o);
+    });
+
+    // Check session
+    const authRes = await fetch("/check-auth", { credentials: "include" });
+    const authData = await authRes.json();
+
+    if (authData.authenticated) {
+        enableApp();
+    }
+};
+
+// ================= LOGIN =================
+async function login(){
+
+    loginStatus.innerText = "Logging in...";
+
+    const res = await fetch("/login",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        credentials:"include",
+        body: JSON.stringify({
+            username: username.value,
+            password: password.value,
+            auth: auth.value,
+            env: env.value
+        })
+    });
+
+    if(res.ok){
+        enableApp();
+    } else {
+        loginStatus.innerText = "Login failed";
+    }
+}
+
+// ================= ENABLE APP =================
+async function enableApp(){
+
+    loginDiv.style.display = "none";
+    mainSection.style.display = "block";
+
+    await loadFolders();
+}
+
+// ================= LOGOUT =================
+async function logout(){
+    await fetch("/logout",{method:"POST"});
+    location.reload();
+}
+
+// ================= FOLDER TOGGLE =================
+function toggleFolder(){
+    folderSelect.disabled = !pfCheck.checked;
+}
+
+// ================= LOAD FOLDERS =================
 async function loadFolders(){
 
-    const res = await fetch("/folders",{credentials:"include"});
+    const res = await fetch("/folders", { credentials: "include" });
     const data = await res.json();
 
     folderSelect.innerHTML = "";
 
-    data.forEach(f=>{
+    data.forEach(f => {
         let o = document.createElement("option");
         o.value = f.cuid;
         o.text = f.name;
@@ -13,45 +122,7 @@ async function loadFolders(){
     });
 }
 
+</script>
 
-
-async function loadData(){
-
-    tbody.innerHTML = `<tr><td colspan="8">Loading...</td></tr>`;
-
-    const res = await fetch("/sap-data",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        credentials:"include",
-        body: JSON.stringify({
-            parent_folder_enabled: pfCheck.checked,
-            folder: folderSelect.value
-        })
-    });
-
-    const data = await res.json();
-
-    tbody.innerHTML = "";
-
-    data.data.forEach(r=>{
-        tbody.innerHTML += `
-        <tr>
-            <td>${r.sr_no}</td>
-            <td>${r.instance_name || ""}</td>
-            <td>${r.parent_folder || ""}</td>
-            <td>${r.owner || ""}</td>
-            <td>${r.completion_time || ""}</td>
-            <td>${r.next_run_time || ""}</td>
-            <td>${r.submission_time || ""}</td>
-        </tr>`;
-    });
-}
-
-
-<th>#</th>
-<th>Name</th>
-<th>Parent Folder</th>
-<th>Owner</th>
-<th>Completion</th>
-<th>Next Run</th>
-<th>Submission</th>
+</body>
+</html>
