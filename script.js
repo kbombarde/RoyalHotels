@@ -19,108 +19,8 @@ def headers(token):
         "Accept": "application/json"
     }
 
-# ================= SERVICE =================
-class BOService:
-
-    def __init__(self):
-        self.folder_map = {}
-        self.initialized = False
-
-    async def initialize(self, client, token, base_url):
-
-        if self.initialized:
-            return
-
-        print("Initializing folder map...")
-
-        self.folder_map = await self.build_folder_map(client, token, base_url)
-        self.initialized = True
-
-    async def build_folder_map(self, client, token, base_url):
-
-        folder_map = {}
-        semaphore = asyncio.Semaphore(10)
-
-        async def fetch_children(parent_cuid):
-
-            async with semaphore:
-
-                try:
-                    res = await client.get(
-                        f"{base_url}/folders/{parent_cuid}/children",
-                        params={"type": "Folder", "page":1, "pagesize":200},
-                        headers=headers(token)
-                    )
-
-                    children = res.json().get("entries", [])
-
-                    tasks = []
-
-                    for f in children:
-                        cuid = f.get("cuid")
-
-                        folder_map[cuid] = {
-                            "name": f.get("name"),
-                            "parent": parent_cuid
-                        }
-
-                        tasks.append(fetch_children(cuid))
-
-                    if tasks:
-                        await asyncio.gather(*tasks)
-
-                except Exception as e:
-                    print("Folder error:", e)
-
-        res = await client.get(
-            f"{base_url}/folders",
-            params={"page":1,"pagesize":9999},
-            headers=headers(token)
-        )
-
-        roots = res.json().get("entries", [])
-
-        tasks = []
-
-        for r in roots:
-            cuid = r.get("cuid")
-
-            folder_map[cuid] = {
-                "name": r.get("name"),
-                "parent": None
-            }
-
-            tasks.append(fetch_children(cuid))
-
-        await asyncio.gather(*tasks)
-
-        print("Folder map loaded:", len(folder_map))
-        return folder_map
-
-    def get_location(self, cuid):
-
-        path = []
-        current = cuid
-
-        while current and current in self.folder_map:
-
-            node = self.folder_map[current]
-
-            name = node["name"]
-            parent = node["parent"]
-
-            if name and name.lower() not in ["root", "root folder"]:
-                path.append(name)
-
-            if not parent or parent == current:
-                break
-
-            current = parent
-
-        path.reverse()
-        return "/" + "/".join(path) if path else ""
-
-bo_service = BOService()
+# ================= CACHE =================
+location_cache = {}
 
 # ================= HELPERS =================
 def get_val(obj, key):
@@ -135,6 +35,56 @@ def extract_server(obj):
 def extract_error(obj):
     return obj.get("SI_STATUSINFO", {}).get("1", {}).get("SI_SUBST_STRINGS", {}).get("1", "")
 
+# ================= LOCATION =================
+async def get_location(client, token, base_url, cuid):
+
+    if not cuid:
+        return ""
+
+    if cuid in location_cache:
+        return location_cache[cuid]
+
+    path = []
+    current = cuid
+
+    while current:
+
+        query = f"""
+        SELECT SI_NAME, SI_PARENT_FOLDER_CUID
+        FROM CI_INFOOBJECTS, CI_APPOBJECTS, CI_SYSTEMOBJECTS
+        WHERE SI_CUID = '{current}'
+        """
+
+        res = await client.post(
+            f"{base_url}/cmsquery?page=1&pagesize=1",
+            json={"query": query},
+            headers=headers(token)
+        )
+
+        entries = res.json().get("entries", [])
+        if not entries:
+            break
+
+        obj = entries[0]
+
+        name = obj.get("SI_NAME")
+        parent = obj.get("SI_PARENT_FOLDER_CUID")
+
+        if name and name.lower() not in ["root", "root folder"]:
+            path.append(name)
+
+        if not parent or parent == current:
+            break
+
+        current = parent
+
+    path.reverse()
+
+    final = "/" + "/".join(path) if path else ""
+    location_cache[cuid] = final
+
+    return final
+
 # ================= HOME =================
 @app.get("/")
 async def home():
@@ -145,7 +95,7 @@ async def home():
 async def envs():
     return {"envs": list(ENV_CONFIG.keys())}
 
-# ================= AUTH CHECK =================
+# ================= AUTH =================
 @app.get("/check-auth")
 async def check_auth(req: Request):
     return {
@@ -179,9 +129,6 @@ async def login(req: Request):
         req.session["token"] = token
         req.session["env"] = body.get("env")
 
-        # 🔥 Constructor init
-        await bo_service.initialize(client, token, base_url)
-
     return {"success": True}
 
 # ================= LOGOUT =================
@@ -190,7 +137,7 @@ async def logout(req: Request):
     req.session.clear()
     return {"success": True}
 
-# ================= SAP DATA =================
+# ================= DATA =================
 @app.post("/sap-data")
 async def sap_data(req: Request):
 
@@ -227,6 +174,23 @@ async def sap_data(req: Request):
         data = res.json()
         objects = data.get("entries", [])
 
+        # 🔥 Unique folder CUIDs
+        unique_cuids = list(set(
+            get_val(o, "SI_PARENT_FOLDER_CUID")
+            for o in objects if get_val(o, "SI_PARENT_FOLDER_CUID")
+        ))
+
+        # 🔥 Resolve locations in parallel
+        tasks = [
+            get_location(client, token, base_url, cuid)
+            for cuid in unique_cuids
+        ]
+
+        locations = await asyncio.gather(*tasks)
+
+        location_map = dict(zip(unique_cuids, locations))
+
+        # 🔥 Build result
         result = []
 
         for idx, obj in enumerate(objects, start=1):
@@ -235,7 +199,7 @@ async def sap_data(req: Request):
                 "sr_no": idx,
                 "instance_name": get_val(obj, "SI_NAME"),
                 "owner": get_val(obj, "SI_OWNER"),
-                "location": bo_service.get_location(get_val(obj, "SI_PARENT_FOLDER_CUID")),
+                "location": location_map.get(get_val(obj, "SI_PARENT_FOLDER_CUID"), ""),
                 "completion_time": get_val(obj, "SI_ENDTIME"),
                 "server": extract_server(obj),
                 "error": extract_error(obj),
