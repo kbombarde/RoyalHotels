@@ -1,31 +1,89 @@
-function renderTable(){
+<!DOCTYPE html>
+<html>
+<head>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body { background:#f4f6f9; }
+.loader { display:none; text-align:center; }
+</style>
+</head>
 
-    tbody.innerHTML="";
+<body class="p-4">
 
-    let fragment = document.createDocumentFragment();
+<div class="container">
 
-    let start = (currentPage-1)*pageSize;
-    let pageData = fullData.slice(start, start+pageSize);
+<h4>Instance Manager</h4>
 
-    pageData.forEach(r=>{
-        let tr = document.createElement("tr");
+<div class="loader" id="loader">
+<div class="spinner-border text-primary"></div>
+</div>
 
-        tr.innerHTML = `
-        <td>${r.sr_no}</td>
-        <td>${r.instance_id}</td>
-        <td>${r.instance_name}</td>
-        <td>${r.location}</td>
-        <td>${r.owner}</td>
-        <td>${r.completion_time}</td>
-        <td>${r.next_run_time}</td>
-        <td>${r.submission_time}</td>
-        <td>${r.expiry}</td>
-        <td>${r.server}</td>
-        <td>${r.error}</td>
-        `;
+<table class="table table-striped mt-3">
+<thead class="table-dark">
+<tr>
+<th>#</th>
+<th>Name</th>
+<th>Status</th>
+<th>Owner</th>
+<th>Location</th>
+<th>Completion</th>
+<th>Server</th>
+<th>Error</th>
+</tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
 
-        fragment.appendChild(tr);
+</div>
+
+<script>
+
+let page = 1;
+let loading = false;
+
+async function loadMore(){
+
+    if(loading) return;
+
+    loading = true;
+    loader.style.display="block";
+
+    const res = await fetch("/sap-data",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({page:page})
     });
 
-    tbody.appendChild(fragment);
+    const data = await res.json();
+
+    data.data.forEach(r=>{
+        tbody.innerHTML += `
+        <tr>
+        <td>${r.sr_no}</td>
+        <td>${r.instance_name}</td>
+        <td>${r.status}</td>
+        <td>${r.owner}</td>
+        <td>${r.location}</td>
+        <td>${r.completion_time}</td>
+        <td>${r.server}</td>
+        <td>${r.error}</td>
+        </tr>`;
+    });
+
+    page++;
+    loading = false;
+    loader.style.display="none";
 }
+
+window.onscroll = () => {
+    if(window.innerHeight + window.scrollY >= document.body.offsetHeight){
+        loadMore();
+    }
+};
+
+loadMore();
+
+</script>
+
+</body>
+</html>
