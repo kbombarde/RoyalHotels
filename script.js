@@ -72,7 +72,6 @@ class BOService:
                 except Exception as e:
                     print("Folder error:", e)
 
-        # root folders
         res = await client.get(
             f"{base_url}/folders",
             params={"page":1,"pagesize":9999},
@@ -106,10 +105,11 @@ class BOService:
         while current and current in self.folder_map:
 
             node = self.folder_map[current]
+
             name = node["name"]
             parent = node["parent"]
 
-            if name.lower() not in ["root", "root folder"]:
+            if name and name.lower() not in ["root", "root folder"]:
                 path.append(name)
 
             if not parent or parent == current:
@@ -140,6 +140,19 @@ def extract_error(obj):
 async def home():
     return FileResponse(os.path.join(BASE_DIR, "templates", "index.html"))
 
+# ================= ENVS =================
+@app.get("/envs")
+async def envs():
+    return {"envs": list(ENV_CONFIG.keys())}
+
+# ================= AUTH CHECK =================
+@app.get("/check-auth")
+async def check_auth(req: Request):
+    return {
+        "authenticated": bool(req.session.get("token")),
+        "env": req.session.get("env")
+    }
+
 # ================= LOGIN =================
 @app.post("/login")
 async def login(req: Request):
@@ -166,9 +179,15 @@ async def login(req: Request):
         req.session["token"] = token
         req.session["env"] = body.get("env")
 
-        # 🔥 INIT
+        # 🔥 Constructor init
         await bo_service.initialize(client, token, base_url)
 
+    return {"success": True}
+
+# ================= LOGOUT =================
+@app.post("/logout")
+async def logout(req: Request):
+    req.session.clear()
     return {"success": True}
 
 # ================= SAP DATA =================
@@ -206,7 +225,6 @@ async def sap_data(req: Request):
         )
 
         data = res.json()
-
         objects = data.get("entries", [])
 
         result = []
@@ -215,13 +233,10 @@ async def sap_data(req: Request):
 
             result.append({
                 "sr_no": idx,
-                "instance_id": get_val(obj, "SI_ID"),
                 "instance_name": get_val(obj, "SI_NAME"),
-                "location": bo_service.get_location(get_val(obj, "SI_PARENT_FOLDER_CUID")),
                 "owner": get_val(obj, "SI_OWNER"),
+                "location": bo_service.get_location(get_val(obj, "SI_PARENT_FOLDER_CUID")),
                 "completion_time": get_val(obj, "SI_ENDTIME"),
-                "next_run_time": get_val(obj, "SI_NEXTRUNTIME"),
-                "submission_time": get_val(obj, "SI_CREATION_TIME"),
                 "server": extract_server(obj),
                 "error": extract_error(obj),
                 "status": get_val(obj, "SI_SCHEDULE_STATUS")
