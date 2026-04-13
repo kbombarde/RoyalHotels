@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Minimal BO App</title>
+    <title>Minimal BO App</title>
 </head>
 
 <body>
 
-<h3>Login</h3>
+<h2>Login</h2>
 
 <div id="loginDiv">
     <input id="username" placeholder="Username"><br><br>
@@ -33,7 +33,30 @@
 
     <select id="folderSelect" disabled></select><br><br>
 
-    <button onclick="logout()">Logout</button>
+    <button onclick="fetchData()">Fetch Data</button>
+
+    <br><br>
+
+    <h3>Results</h3>
+
+    <table border="1" id="dataTable">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>SI_ID</th>
+                <th>SI_NAME</th>
+                <th>SI_PARENTID</th>
+                <th>SI_PARENT_FOLDER_CUID</th>
+                <th>SI_OWNER</th>
+                <th>SI_STARTTIME</th>
+                <th>SI_ENDTIME</th>
+                <th>SI_CREATION_TIME</th>
+                <th>SI_NEXTRUNTIME</th>
+                <th>SI_SCHEDULE_STATUS</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
 
 </div>
 
@@ -42,7 +65,7 @@
 // ================= INIT =================
 window.onload = async () => {
 
-    // Load envs
+    // Load environments
     const res = await fetch("/envs");
     const data = await res.json();
 
@@ -53,7 +76,7 @@ window.onload = async () => {
         env.appendChild(o);
     });
 
-    // Check session
+    // Check session persistence
     const authRes = await fetch("/check-auth", { credentials: "include" });
     const authData = await authRes.json();
 
@@ -101,7 +124,7 @@ async function logout(){
     location.reload();
 }
 
-// ================= FOLDER TOGGLE =================
+// ================= TOGGLE FOLDER =================
 function toggleFolder(){
     folderSelect.disabled = !pfCheck.checked;
 }
@@ -120,6 +143,56 @@ async function loadFolders(){
         o.text = f.name;
         folderSelect.appendChild(o);
     });
+}
+
+// ================= FETCH DATA =================
+async function fetchData(){
+
+    tableBody.innerHTML = "<tr><td colspan='11'>Loading...</td></tr>";
+
+    const res = await fetch("/sap-data",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        credentials:"include",
+        body: JSON.stringify({
+            parent_folder_enabled: pfCheck.checked,
+            folder: folderSelect.value
+        })
+    });
+
+    const data = await res.json();
+
+    tableBody.innerHTML = "";
+
+    data.data.forEach((obj, index) => {
+
+        tableBody.innerHTML += `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${getVal(obj, "SI_ID")}</td>
+            <td>${getVal(obj, "SI_NAME")}</td>
+            <td>${getVal(obj, "SI_PARENTID")}</td>
+            <td>${getVal(obj, "SI_PARENT_FOLDER_CUID")}</td>
+            <td>${getVal(obj, "SI_OWNER")}</td>
+            <td>${getVal(obj, "SI_STARTTIME")}</td>
+            <td>${getVal(obj, "SI_ENDTIME")}</td>
+            <td>${getVal(obj, "SI_CREATION_TIME")}</td>
+            <td>${getVal(obj, "SI_NEXTRUNTIME")}</td>
+            <td>${getVal(obj, "SI_SCHEDULE_STATUS")}</td>
+        </tr>`;
+    });
+}
+
+// ================= SAFE VALUE =================
+function getVal(obj, key){
+
+    const val = obj[key];
+
+    if(val && typeof val === "object" && "value" in val){
+        return val.value;
+    }
+
+    return val || "";
 }
 
 </script>
