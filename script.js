@@ -1,8 +1,9 @@
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 🔐 Config
 LOGON_TOKEN = "YOUR_LOGON_TOKEN"
-ROOT_FOLDER_CUID = "YOUR_ROOT_FOLDER_CUID"   # e.g. "Af3kL9abcde123"
+ROOT_FOLDER_CUID = "YOUR_ROOT_FOLDER_CUID"
 
 BASE_URL = "http://<BO_SERVER>:<PORT>/biprws/v1"
 
@@ -11,36 +12,76 @@ HEADERS = {
     "Accept": "application/json"
 }
 
-
-def get_children_by_cuid(folder_cuid):
-    url = f"{BASE_URL}/folders/{folder_cuid}/children"
-    response = requests.get(url, headers=HEADERS)
-    response.raise_for_status()
-    return response.json().get("entries", [])
+# Global map: cuid -> node
+folder_map = {}
 
 
-def print_tree(folder, indent=""):
-    print(f"{indent}📁 {folder['name']} ({folder['cuid']})")
-
-    children = get_children_by_cuid(folder['cuid'])
-
-    for child in children:
-        # Ensure only folders
-        if child.get("type") == "Folder":
-            print_tree(child, indent + "    ")
+def get_children(cuid):
+    url = f"{BASE_URL}/folders/{cuid}/children"
+    res = requests.get(url, headers=HEADERS)
+    res.raise_for_status()
+    return res.json().get("entries", [])
 
 
-def get_root_folder_by_cuid():
-    url = f"{BASE_URL}/folders/{ROOT_FOLDER_CUID}"
-    response = requests.get(url, headers=HEADERS)
-    response.raise_for_status()
-    return response.json()
+def build_tree_parallel(root_cuid):
+    queue = [root_cuid]
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        while queue:
+            futures = {executor.submit(get_children, cuid): cuid for cuid in queue}
+            queue = []
+
+            for future in as_completed(futures):
+                parent_cuid = futures[future]
+                children = future.result()
+
+                # Ensure parent exists
+                folder_map.setdefault(parent_cuid, {
+                    "name": "ROOT",
+                    "children": []
+                })
+
+                for child in children:
+                    if child.get("type") != "Folder":
+                        continue
+
+                    cuid = child["cuid"]
+
+                    # Add child node
+                    folder_map[cuid] = {
+                        "name": child["name"],
+                        "children": []
+                    }
+
+                    # Link parent -> child
+                    folder_map[parent_cuid]["children"].append(cuid)
+
+                    # Add to next level queue
+                    queue.append(cuid)
 
 
-def build_folder_tree():
-    root = get_root_folder_by_cuid()
-    print_tree(root)
+def print_tree(cuid, indent=""):
+    node = folder_map.get(cuid)
+    if not node:
+        return
+
+    print(f"{indent}📁 {node['name']} ({cuid})")
+
+    for child_cuid in node["children"]:
+        print_tree(child_cuid, indent + "    ")
+
+
+def main():
+    # Initialize root
+    folder_map[ROOT_FOLDER_CUID] = {
+        "name": "ROOT",
+        "children": []
+    }
+
+    build_tree_parallel(ROOT_FOLDER_CUID)
+
+    print_tree(ROOT_FOLDER_CUID)
 
 
 if __name__ == "__main__":
-    build_folder_tree()
+    main()
