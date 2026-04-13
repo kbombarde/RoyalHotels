@@ -1,74 +1,37 @@
-async def build_location_from_cms_chain(client, token, base_url, start_cuid, root_cuid):
+import asyncio
 
-    if start_cuid in location_cache:
-        return location_cache[start_cuid]
+async def fetch_all_cms_data(client, token, base_url, query):
 
-    path = []
-    current = start_cuid
+    page_size = 200
 
-    MAX_DEPTH = 20
-    depth = 0
+    # First call to get total count
+    first = await client.post(
+        f"{base_url}/v1/cmsquery?page=1&pagesize={page_size}",
+        json={"query": query},
+        headers=headers(token)
+    )
 
-    while current and current != root_cuid and depth < MAX_DEPTH:
-        depth += 1
+    data = first.json()
 
-        query = f"""
-        SELECT SI_NAME, SI_PARENT_FOLDER_CUID
-        FROM CI_INFOOBJECTS, CI_APPOBJECTS, CI_SYSTEMOBJECTS
-        WHERE SI_CUID = '{current}'
-        """
+    entries = data.get("entries", [])
+    total = int(first.headers.get("X-Total-Count", len(entries)))
 
+    total_pages = (total // page_size) + 1
+
+    # 🔥 Parallel calls
+    async def fetch(page):
         res = await client.post(
-            f"{base_url}/v1/cmsquery?page=1&pagesize=1",
+            f"{base_url}/v1/cmsquery?page={page}&pagesize={page_size}",
             json={"query": query},
             headers=headers(token)
         )
+        d = res.json()
+        return d.get("entries", [])
 
-        entries = res.json().get("entries", [])
-        if not entries:
-            break
+    tasks = [fetch(p) for p in range(1, total_pages+1)]
 
-        obj = entries[0]
+    results = await asyncio.gather(*tasks)
 
-        name = obj.get("SI_NAME")
-        parent = obj.get("SI_PARENT_FOLDER_CUID")
+    all_entries = [item for sublist in results for item in sublist]
 
-        if name and name.lower() not in ["root", "root folder"]:
-            path.append(name)
-
-        if not parent or parent == current:
-            break
-
-        current = parent
-
-    path.reverse()
-    final_path = "/" + "/".join(path) if path else ""
-
-    location_cache[start_cuid] = final_path   # 🔥 cache it
-
-    return final_path
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    async def get_schedules(client, token, base_url, parent_ids):
-
-    async def fetch(pid):
-        try:
-            res = await client.get(
-                f"{base_url}/v1/documents/{pid}/schedules",
-                headers=headers(token)
-            )
-            return pid, res.json().get("entries", [])
-        except:
-            return pid, []
-
-    results = await asyncio.gather(*[fetch(pid) for pid in parent_ids])
-
-    return dict(results)
+    return all_entries
