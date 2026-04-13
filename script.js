@@ -35,3 +35,20 @@ async def fetch_all_cms_data(client, token, base_url, query):
     all_entries = [item for sublist in results for item in sublist]
 
     return all_entries
+    
+    
+    
+    
+
+
+async def get_folder_map(client, token, base_url):
+
+    res = await client.get(
+        f"{base_url}/folders",
+        params={"page":1,"pagesize":9999},
+        headers=headers(token)
+    )
+
+    folders = res.json().get("entries", [])
+
+    return {f["cuid"]: f["name"] for f in folders}
