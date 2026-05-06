@@ -1,197 +1,63 @@
-<!DOCTYPE html>
-<html>
-<head>
-<title>BO App</title>
-</head>
+1️⃣ CI/CD Pipeline Design
 
-<body>
+Ask:
 
-<h3>Login</h3>
+“Walk me through the CI/CD pipeline you implemented using Jenkins, SonarQube, JFrog, and Ansible.”
 
-<div id="loginDiv">
-    <input id="username" placeholder="Username"><br><br>
-    <input id="password" type="password" placeholder="Password"><br><br>
+✅ Look For
 
-    <select id="auth">
-        <option value="secEnterprise">Enterprise</option>
-        <option value="secLDAP">LDAP</option>
-    </select><br><br>
+* Clear stage-by-stage explanation
+* Build → Scan → Artifact → Deploy flow
+* Quality gates before deployment
+* Rollback strategy
+* Real contribution vs maintenance
 
-    <select id="env"></select><br><br>
+🚩 Red Flags
 
-    <button onclick="login()">Login</button>
-    <p id="loginStatus"></p>
-</div>
+* Only tool names
+* No deployment flow understanding
+* Cannot explain rollback/failure handling
 
-<hr>
+⸻
 
-<div id="authBar" style="display:none;">
-    Authenticated: <b id="envName"></b>
-    <button onclick="logout()">Logout</button>
-</div>
+2️⃣ Terraform + Ansible Usage
 
-<hr>
+Ask:
 
-<div id="mainSection" style="display:none;">
+“How did you use Terraform and Ansible together in your infrastructure automation?”
 
-    <input type="checkbox" id="pfCheck" onchange="toggleFolder()"> Parent Folder<br><br>
+✅ Look For
 
-    <select id="folderSelect" disabled></select><br><br>
+* Terraform → provisioning
+* Ansible → configuration management
+* Remote backend knowledge (S3/DynamoDB)
+* Idempotency understanding
+* Modular approach
 
-    <button onclick="fetchData()">Fetch Data</button>
+🚩 Red Flags
 
-    <br><br>
+* Confuses both tools
+* No state file knowledge
+* No real-world provisioning explanation
 
-    <table border="1">
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>SI_ID</th>
-                <th>SI_NAME</th>
-                <th>SI_PARENTID</th>
-                <th>SI_PARENT_FOLDER_CUID</th>
-                <th>SI_OWNER</th>
-                <th>SI_STARTTIME</th>
-                <th>SI_ENDTIME</th>
-                <th>SI_CREATION_TIME</th>
-                <th>SI_NEXTRUNTIME</th>
-                <th>SI_SCHEDULE_STATUS</th>
-                <th>LOCATION</th>
-            </tr>
-        </thead>
-        <tbody id="tableBody"></tbody>
-    </table>
+⸻
 
-</div>
+3️⃣ Python Automation
 
-<script>
+Ask:
 
-window.onload = async () => {
+“You mentioned Python automation scripts for monitoring and reporting — explain one automation you built.”
 
-    const res = await fetch("/envs");
-    const data = await res.json();
+✅ Look For
 
-    data.envs.forEach(e => {
-        let o = document.createElement("option");
-        o.value = e;
-        o.text = e;
-        env.appendChild(o);
-    });
+* Real use case
+* API/log parsing/scripting explanation
+* Exception handling
+* Scheduling/alerts
+* Operational impact
 
-    const authRes = await fetch("/check-auth", { credentials: "include" });
-    const authData = await authRes.json();
+🚩 Red Flags
 
-    if (authData.authenticated) {
-        enableApp(authData.env);
-    }
-};
-
-async function login(){
-
-    const res = await fetch("/login",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        credentials:"include",
-        body: JSON.stringify({
-            username: username.value,
-            password: password.value,
-            auth: auth.value,
-            env: env.value
-        })
-    });
-
-    if(res.ok){
-        enableApp(env.value);
-    } else {
-        loginStatus.innerText = "Login failed";
-    }
-}
-
-async function enableApp(envVal){
-
-    loginDiv.style.display = "none";
-    mainSection.style.display = "block";
-    authBar.style.display = "block";
-
-    envName.innerText = envVal;
-
-    await loadFolders();
-}
-
-async function logout(){
-    await fetch("/logout",{method:"POST"});
-    location.reload();
-}
-
-function toggleFolder(){
-    folderSelect.disabled = !pfCheck.checked;
-}
-
-async function loadFolders(){
-
-    const res = await fetch("/folders", { credentials: "include" });
-    const data = await res.json();
-
-    folderSelect.innerHTML = "";
-
-    data.forEach(f => {
-        let o = document.createElement("option");
-        o.value = f.cuid;
-        o.text = f.name;
-        folderSelect.appendChild(o);
-    });
-}
-
-async function fetchData(){
-
-    tableBody.innerHTML = "<tr><td colspan='12'>Loading...</td></tr>";
-
-    const res = await fetch("/sap-data",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        credentials:"include",
-        body: JSON.stringify({
-            parent_folder_enabled: pfCheck.checked,
-            folder: folderSelect.value
-        })
-    });
-
-    const data = await res.json();
-
-    tableBody.innerHTML = "";
-
-    data.data.forEach((obj, index) => {
-
-        tableBody.innerHTML += `
-        <tr>
-            <td>${index + 1}</td>
-            <td>${getVal(obj, "SI_ID")}</td>
-            <td>${getVal(obj, "SI_NAME")}</td>
-            <td>${getVal(obj, "SI_PARENTID")}</td>
-            <td>${getVal(obj, "SI_PARENT_FOLDER_CUID")}</td>
-            <td>${getVal(obj, "SI_OWNER")}</td>
-            <td>${getVal(obj, "SI_STARTTIME")}</td>
-            <td>${getVal(obj, "SI_ENDTIME")}</td>
-            <td>${getVal(obj, "SI_CREATION_TIME")}</td>
-            <td>${getVal(obj, "SI_NEXTRUNTIME")}</td>
-            <td>${getVal(obj, "SI_SCHEDULE_STATUS")}</td>
-            <td>${obj.LOCATION || ""}</td>
-        </tr>`;
-    });
-}
-
-function getVal(obj, key){
-
-    const val = obj[key];
-
-    if(val && typeof val === "object" && "value" in val){
-        return val.value;
-    }
-
-    return val || "";
-}
-
-</script>
-
-</body>
-</html>
+* Very generic answer
+* Cannot explain logic flow
+* Only edited existing scripts
