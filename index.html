@@ -1,63 +1,119 @@
-1️⃣ CI/CD Pipeline Design
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Form</title>
+</head>
+<body>
 
-Ask:
+    <!-- SECTION 1 -->
+    <div id="authSection">
+        <h2>Authentication</h2>
 
-“Walk me through the CI/CD pipeline you implemented using Jenkins, SonarQube, JFrog, and Ansible.”
+        <div id="loginForm">
+            <input type="text" id="username" placeholder="Username" />
 
-✅ Look For
+            <input type="password" id="password" placeholder="Password" />
 
-* Clear stage-by-stage explanation
-* Build → Scan → Artifact → Deploy flow
-* Quality gates before deployment
-* Rollback strategy
-* Real contribution vs maintenance
+            <select id="authType">
+                <option value="Enterprise">Enterprise</option>
+                <option value="LDAP">LDAP</option>
+            </select>
 
-🚩 Red Flags
+            <button onclick="login()">Login</button>
+        </div>
 
-* Only tool names
-* No deployment flow understanding
-* Cannot explain rollback/failure handling
+        <div id="authStatus" style="display:none;">
+            <span style="color:green;">●</span>
+            Authenticated
+            <a href="#" onclick="logout()">Logout</a>
+        </div>
+    </div>
 
-⸻
+    <hr />
 
-2️⃣ Terraform + Ansible Usage
+    <!-- SECTION 2 -->
+    <div id="section2" style="opacity:0.5; pointer-events:none;">
+        <h2>Section 2</h2>
+        <p>This section becomes active after successful login.</p>
+    </div>
 
-Ask:
+    <script>
+        const BASE_URL = "http://baseurl:6405";
 
-“How did you use Terraform and Ansible together in your infrastructure automation?”
+        // Check token on page load
+        window.onload = function () {
+            const token = localStorage.getItem("logonToken");
 
-✅ Look For
+            if (token) {
+                setAuthenticatedUI();
+            }
+        };
 
-* Terraform → provisioning
-* Ansible → configuration management
-* Remote backend knowledge (S3/DynamoDB)
-* Idempotency understanding
-* Modular approach
+        async function login() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const auth = document.getElementById("authType").value;
 
-🚩 Red Flags
+            const requestBody = {
+                username: username,
+                password: password,
+                auth: auth
+            };
 
-* Confuses both tools
-* No state file knowledge
-* No real-world provisioning explanation
+            try {
+                const response = await fetch(
+                    `${BASE_URL}/biprws/logon/long`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(requestBody)
+                    }
+                );
 
-⸻
+                if (!response.ok) {
+                    throw new Error("Login Failed");
+                }
 
-3️⃣ Python Automation
+                const data = await response.json();
 
-Ask:
+                // Assuming API returns token like:
+                // { "logonToken": "xxxxxx" }
 
-“You mentioned Python automation scripts for monitoring and reporting — explain one automation you built.”
+                const token = data.logonToken;
 
-✅ Look For
+                if (token) {
+                    localStorage.setItem("logonToken", token);
+                    setAuthenticatedUI();
+                } else {
+                    alert("Token not found in response");
+                }
 
-* Real use case
-* API/log parsing/scripting explanation
-* Exception handling
-* Scheduling/alerts
-* Operational impact
+            } catch (error) {
+                console.error(error);
+                alert("Authentication Failed");
+            }
+        }
 
-🚩 Red Flags
+        function setAuthenticatedUI() {
+            document.getElementById("loginForm").style.display = "none";
+            document.getElementById("authStatus").style.display = "block";
 
-* Very generic answer
-* Cannot explain logic flow
-* Only edited existing scripts
+            document.getElementById("section2").style.opacity = "1";
+            document.getElementById("section2").style.pointerEvents = "auto";
+        }
+
+        function logout() {
+            localStorage.removeItem("logonToken");
+
+            document.getElementById("loginForm").style.display = "block";
+            document.getElementById("authStatus").style.display = "none";
+
+            document.getElementById("section2").style.opacity = "0.5";
+            document.getElementById("section2").style.pointerEvents = "none";
+        }
+    </script>
+
+</body>
+</html>
