@@ -1,325 +1,41 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>SAP BO Authentication</title>
-</head>
-
-<body>
-
-    <!-- SECTION 1 -->
-    <div id="authSection">
-
-        <h2>Authentication</h2>
-
-        <div id="loginContainer">
-
-            <input
-                type="text"
-                id="username"
-                placeholder="Username"
-            />
-
-            <input
-                type="password"
-                id="password"
-                placeholder="Password"
-            />
-
-            <select id="authType">
-                <option value="secEnterprise">
-                    Enterprise
-                </option>
-
-                <option value="secLDAP">
-                    LDAP
-                </option>
-            </select>
-
-            <button onclick="login()">
-                Login
-            </button>
-
-        </div>
-
-        <div
-            id="authenticatedContainer"
-            style="display:none;"
-        >
-            <span style="color:green;">
-                ●
-            </span>
-
-            Authenticated
-
-            <a
-                href="#"
-                onclick="logout()"
-            >
-                Logout
-            </a>
-        </div>
-
-    </div>
-
-    <hr />
-
-    <!-- SECTION 2 -->
-    <div
-        id="section2"
-        style="
-            opacity:0.5;
-            pointer-events:none;
-        "
-    >
-        <h2>Section 2</h2>
-
-        <p>
-            This section becomes active after successful SAP BO authentication.
-        </p>
-    </div>
-
-    <script>
-
-        /*
-            IMPORTANT:
-            Replace with your SAP BO server URL
-        */
-
-        const BASE_URL = "http://baseurl:6405";
-
-        /*
-            Local Storage Key
-        */
-
-        const TOKEN_KEY = "sap_bo_logon_token";
-
-        /*
-            Page Load
-        */
-
-        window.onload = function () {
-
-            const token = localStorage.getItem(TOKEN_KEY);
-
-            if (token) {
-                enableAuthenticatedState();
-            }
-
-        };
-
-        /*
-            Login Function
-        */
-
-        async function login() {
-
-            const username =
-                document.getElementById("username").value;
-
-            const password =
-                document.getElementById("password").value;
-
-            const authType =
-                document.getElementById("authType").value;
-
-            /*
-                SAP BO expects XML payload
-            */
-
-            const requestBody = `
-                <attrs xmlns="http://www.sap.com/rws/bip">
-                    <attr name="userName" type="string">
-                        ${username}
-                    </attr>
-
-                    <attr name="password" type="string">
-                        ${password}
-                    </attr>
-
-                    <attr name="auth" type="string">
-                        ${authType}
-                    </attr>
-                </attrs>
-            `;
-
-            try {
-
-                const response = await fetch(
-                    `${BASE_URL}/biprws/logon/long`,
-                    {
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type": "application/xml",
-                            "Accept": "application/json"
-                        },
-
-                        body: requestBody
-                    }
-                );
-
-                if (!response.ok) {
-
-                    const errorText =
-                        await response.text();
-
-                    console.error(errorText);
-
-                    alert(
-                        "Authentication Failed"
-                    );
-
-                    return;
-                }
-
-                const responseData =
-                    await response.json();
-
-                console.log(responseData);
-
-                /*
-                    SAP BO token path
-                */
-
-                let logonToken = null;
-
-                if (
-                    responseData &&
-                    responseData.logonToken
-                ) {
-                    logonToken =
-                        responseData.logonToken;
-                }
-
-                /*
-                    Fallback parsing
-                */
-
-                if (
-                    !logonToken &&
-                    responseData &&
-                    responseData.attrs
-                ) {
-
-                    const attrs =
-                        responseData.attrs.attr;
-
-                    if (Array.isArray(attrs)) {
-
-                        attrs.forEach(function(item) {
-
-                            if (
-                                item.name === "logonToken"
-                            ) {
-                                logonToken = item.$;
-                            }
-
-                        });
-
-                    }
-
-                }
-
-                /*
-                    Token Validation
-                */
-
-                if (!logonToken) {
-
-                    console.error(
-                        "Token not found",
-                        responseData
-                    );
-
-                    alert(
-                        "Token not received from SAP BO"
-                    );
-
-                    return;
-                }
-
-                /*
-                    Save Token
-                */
-
-                localStorage.setItem(
-                    TOKEN_KEY,
-                    logonToken
-                );
-
-                enableAuthenticatedState();
-
-                alert(
-                    "Authentication Successful"
-                );
-
-            }
-            catch (error) {
-
-                console.error(
-                    "Fetch Error:",
-                    error
-                );
-
-                alert(
-                    "Failed to connect to SAP BO API"
-                );
-
-            }
-
-        }
-
-        /*
-            Enable Authenticated State
-        */
-
-        function enableAuthenticatedState() {
-
-            document
-                .getElementById("loginContainer")
-                .style.display = "none";
-
-            document
-                .getElementById("authenticatedContainer")
-                .style.display = "block";
-
-            document
-                .getElementById("section2")
-                .style.opacity = "1";
-
-            document
-                .getElementById("section2")
-                .style.pointerEvents = "auto";
-
-        }
-
-        /*
-            Logout
-        */
-
-        function logout() {
-
-            localStorage.removeItem(TOKEN_KEY);
-
-            document
-                .getElementById("loginContainer")
-                .style.display = "block";
-
-            document
-                .getElementById("authenticatedContainer")
-                .style.display = "none";
-
-            document
-                .getElementById("section2")
-                .style.opacity = "0.5";
-
-            document
-                .getElementById("section2")
-                .style.pointerEvents = "none";
-
-        }
-
-    </script>
-
-</body>
-</html>
+Hi, I’m Kshitij Bombarde. I work as an Automation Engineer focused on BI and process automation. My experience includes building automation solutions using technologies like Ansible and Python to streamline operational and reporting processes.
+
+Ansible
+How did you structure Ansible roles for large-scale environments?
+Check: reusable roles, inventories, group_vars, environment separation.
+Explain a complex automation you built using Ansible.
+Check: real use case, error handling, scaling, idempotency.
+How do you manage secrets across multiple environments?
+Check: Vault, Jenkins secrets, AWS Secrets Manager, RBAC.
+How do you troubleshoot failed playbooks in production?
+Check: verbose logs, failed tasks, retry logic, debugging approach.
+How do you integrate Ansible with CI/CD pipelines?
+Check: Jenkins/GitLab integration, automated deployments, approvals.
+Python
+Explain a real automation framework or script you developed.
+Check: modularity, logging, APIs, scheduling, maintainability.
+How do you optimize slow Python scripts?
+Check: profiling, multiprocessing, efficient data structures.
+Explain multithreading vs asyncio vs multiprocessing with use cases.
+Check: practical production examples.
+How do you structure enterprise-level Python projects?
+Check: packages, virtual env, requirements, logging, config management.
+How do you handle API retries, failures, and timeouts in automation?
+Check: retry mechanism, exception handling, resilience.
+CI/CD
+Design a CI/CD pipeline for a microservices application.
+Check: build, test, docker, scan, deploy, rollback, monitoring.
+How do you secure CI/CD pipelines?
+Check: secrets management, RBAC, artifact signing, vulnerability scanning.
+Explain a production deployment failure you handled.
+Check: ownership, RCA, rollback, communication.
+How do you implement blue-green or canary deployment?
+Check: zero downtime concepts, traffic shifting, rollback.
+How do you reduce deployment time in pipelines?
+Check: caching, parallel jobs, optimized builds, incremental deployment.
+Strong Follow-Up Questions
+“Why did you choose this approach?”
+“What challenges did you face?”
+“How did you scale it?”
+“How did you monitor failures?”
+“What would you improve now?”
