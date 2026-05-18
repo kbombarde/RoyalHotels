@@ -1,307 +1,379 @@
-import requests
-import csv
-import json
-from collections import defaultdict
-
-# =========================================================
-# CONFIGURATION
-# =========================================================
-
-BASE_URL = "http://<BASE_URL>/v1"
-
-# Example:
-# BASE_URL = "http://bo-server:6405/biprws/v1"
-
-LOGON_TOKEN = "ENTER_YOUR_LOGON_TOKEN"
-
-OUTPUT_CSV = "scheduled_reports_instances.csv"
-
-HEADERS = {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-    "X-SAP-LOGONTOKEN": LOGON_TOKEN
-}
-
-# =========================================================
-# CMS QUERY FUNCTION
-# =========================================================
-
-def cms_query(query):
-    url = f"{BASE_URL}/cmsquery"
-
-    payload = {
-        "query": query
-    }
-
-    response = requests.post(
-        url,
-        headers=HEADERS,
-        json=payload,
-        verify=False
-    )
-
-    response.raise_for_status()
-
-    return response.json()
-
-
-# =========================================================
-# GET ALL FOLDERS
-# =========================================================
-
-def get_folders():
-    query = """
-    SELECT SI_ID, SI_NAME, SI_PARENTID
-    FROM CI_INFOOBJECTS
-    WHERE SI_KIND = 'Folder'
-    """
-
-    data = cms_query(query)
-
-    folders = {}
-
-    for obj in data.get("entries", []):
-        props = obj.get("properties", {})
-
-        folder_id = props.get("SI_ID")
-        folders[folder_id] = {
-            "name": props.get("SI_NAME"),
-            "parent_id": props.get("SI_PARENTID")
-        }
-
-    return folders
-
-
-# =========================================================
-# BUILD FOLDER PATH
-# =========================================================
-
-def build_folder_path(parent_id, folders):
-    path_parts = []
-
-    while parent_id and parent_id in folders:
-        folder = folders[parent_id]
-
-        path_parts.insert(0, folder["name"])
-
-        parent_id = folder["parent_id"]
-
-    return "/" + "/".join(path_parts)
-
-
-# =========================================================
-# GET REPORT INSTANCES
-# =========================================================
-
-def get_report_instances():
-
-    query = """
-    SELECT
-        SI_ID,
-        SI_NAME,
-        SI_OWNER,
-        SI_AUTHOR,
-        SI_DESCRIPTION,
-        SI_PARENTID,
-        SI_CREATION_TIME,
-        SI_UPDATE_TS,
-        SI_NEXTRUNTIME,
-        SI_STARTTIME,
-        SI_ENDTIME,
-        SI_RECURRING,
-        SI_SCHEDULE_STATUS,
-        SI_SCHEDULEINFO,
-        SI_FILES,
-        SI_UNIVERSE
-    FROM CI_INFOOBJECTS
-    WHERE SI_INSTANCE = 1
-    """
-
-    data = cms_query(query)
-
-    return data.get("entries", [])
-
-
-# =========================================================
-# STATUS MAPPING
-# =========================================================
-
-STATUS_MAP = {
-    0: "Pending",
-    1: "Running",
-    2: "Success",
-    3: "Failed",
-    8: "Paused"
-}
-
-
-# =========================================================
-# SAFE NESTED ACCESS
-# =========================================================
-
-def safe_get(d, *keys):
-    current = d
-
-    for key in keys:
-        if not isinstance(current, dict):
-            return None
-
-        current = current.get(key)
-
-        if current is None:
-            return None
-
-    return current
-
-
-# =========================================================
-# EXTRACT DESTINATIONS
-# =========================================================
-
-def extract_destinations(schedule_info):
-
-    disk_destination = ""
-    ftp_destination = ""
-
-    try:
-        destinations = schedule_info.get("SI_DESTINATIONS", {})
-
-        # Disk destination
-        disk = destinations.get("DiskUnmanaged", {})
-        if disk:
-            disk_destination = disk.get("SI_DEST_PATH", "")
-
-        # FTP destination
-        ftp = destinations.get("FTP", {})
-        if ftp:
-            ftp_server = ftp.get("SI_FTP_SERVER_NAME", "")
-            ftp_path = ftp.get("SI_REMOTE_DIR", "")
-
-            ftp_destination = f"{ftp_server}:{ftp_path}"
-
-    except Exception:
-        pass
-
-    return disk_destination, ftp_destination
-
-
-# =========================================================
-# MAIN
-# =========================================================
-
-def main():
-
-    print("Fetching folders...")
-    folders = get_folders()
-
-    print("Fetching report instances...")
-    instances = get_report_instances()
-
-    rows = []
-
-    for entry in instances:
-
-        props = entry.get("properties", {})
-
-        schedule_info = props.get("SI_SCHEDULEINFO", {})
-
-        parent_id = props.get("SI_PARENTID")
-
-        folder_path = build_folder_path(parent_id, folders)
-
-        # Size extraction
-        size = safe_get(
-            props,
-            "SI_FILES",
-            "SI_FILE1",
-            "SI_SIZE"
-        )
-
-        # Status
-        status_code = props.get("SI_SCHEDULE_STATUS")
-        status = STATUS_MAP.get(status_code, str(status_code))
-
-        # Recurrence
-        recurrence = schedule_info.get("SI_SCHEDULE_TYPE")
-
-        # Universe
-        universe = props.get("SI_UNIVERSE")
-
-        # Retries
-        retries = schedule_info.get("SI_RETRY_COUNT")
-
-        # Retry Interval
-        retry_interval = schedule_info.get("SI_RETRY_INTERVAL")
-
-        # Destinations
-        disk_destination, ftp_destination = extract_destinations(schedule_info)
-
-        row = {
-            "Report Name": props.get("SI_NAME"),
-            "ID": props.get("SI_ID"),
-            "Owner": props.get("SI_OWNER"),
-            "Author": props.get("SI_AUTHOR"),
-            "Description": props.get("SI_DESCRIPTION"),
-            "FolderPath": folder_path,
-            "Size": size,
-            "Status": status,
-            "Recurrence": recurrence,
-            "Schedule Begin": props.get("SI_STARTTIME"),
-            "Schedule End": props.get("SI_ENDTIME"),
-            "NextRun Time": props.get("SI_NEXTRUNTIME"),
-            "Universe": universe,
-            "Creation Date": props.get("SI_CREATION_TIME"),
-            "Changed Date": props.get("SI_UPDATE_TS"),
-            "Retries": retries,
-            "Retry Interval": retry_interval,
-            "Disk Destination": disk_destination,
-            "FTP Destination": ftp_destination
-        }
-
-        rows.append(row)
-
-    # =====================================================
-    # WRITE CSV
-    # =====================================================
-
-    print(f"Writing {OUTPUT_CSV}...")
-
-    with open(OUTPUT_CSV, mode="w", newline="", encoding="utf-8") as csv_file:
-
-        fieldnames = [
-            "Report Name",
-            "ID",
-            "Owner",
-            "Author",
-            "Description",
-            "FolderPath",
-            "Size",
-            "Status",
-            "Recurrence",
-            "Schedule Begin",
-            "Schedule End",
-            "NextRun Time",
-            "Universe",
-            "Creation Date",
-            "Changed Date",
-            "Retries",
-            "Retry Interval",
-            "Disk Destination",
-            "FTP Destination"
-        ]
-
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-
-        writer.writeheader()
-
-        writer.writerows(rows)
-
-    print("Done!")
-
-
-# =========================================================
-# ENTRYPOINT
-# =========================================================
-
-if __name__ == "__main__":
-    main()
+DEVOPS / CLOUD / AUTOMATION INTERVIEW QUESTIONS WITH EXPECTED ANSWERS & KEYWORDS
+================================================================================
+
+PYTHON
+======
+
+1. Difference between list, tuple, and set?
+Expected Keywords:
+- List = mutable, ordered
+- Tuple = immutable
+- Set = unique values, unordered
+- Use cases and performance differences
+
+2. What is a Python decorator?
+Expected Keywords:
+- Wrapper function
+- Extends functionality
+- @decorator syntax
+- Logging/authentication examples
+
+3. Difference between multithreading and multiprocessing?
+Expected Keywords:
+- Thread vs Process
+- GIL
+- CPU-bound vs I/O-bound
+- Parallelism
+
+4. How do you handle exceptions?
+Expected Keywords:
+- try/except/finally
+- custom exceptions
+- logging errors
+
+5. How would you parse logs and extract ERROR lines?
+Expected Keywords:
+- file handling
+- regex/string matching
+- loops
+- automation mindset
+
+6. How would you automate AWS tasks using Python?
+Expected Keywords:
+- boto3
+- EC2/S3 automation
+- Lambda
+- monitoring scripts
+
+7. Explain virtual environments.
+Expected Keywords:
+- dependency isolation
+- venv
+- pip requirements
+
+8. Show a real Python automation project.
+Expected Keywords:
+- reusable scripts
+- scheduling
+- monitoring
+- API integrations
+
+--------------------------------------------------------------------------------
+
+ANSIBLE
+========
+
+1. What is Ansible?
+Expected Keywords:
+- agentless
+- SSH based
+- automation/configuration management
+
+2. Difference between playbook and role?
+Expected Keywords:
+- playbook = execution
+- role = reusable structure
+
+3. What is idempotency?
+Expected Keywords:
+- repeatable execution
+- no duplicate changes
+- desired state
+
+4. Difference between shell and command module?
+Expected Keywords:
+- shell supports operators/pipes
+- command is safer
+
+5. Explain inventory files.
+Expected Keywords:
+- static inventory
+- dynamic inventory
+- host grouping
+
+6. What are handlers?
+Expected Keywords:
+- triggered tasks
+- service restart after changes
+
+7. Explain Jinja2 templating.
+Expected Keywords:
+- variables
+- templates
+- dynamic configs
+
+8. How do you manage secrets?
+Expected Keywords:
+- Ansible Vault
+- encrypted variables
+
+9. What is Ansible Galaxy?
+Expected Keywords:
+- reusable roles
+- collections
+
+10. How would you patch 500 servers safely?
+Expected Keywords:
+- rolling deployment
+- serial execution
+- validation
+- rollback
+
+--------------------------------------------------------------------------------
+
+TERRAFORM
+==========
+
+1. What is Terraform state?
+Expected Keywords:
+- infrastructure mapping
+- tfstate
+- tracking resources
+
+2. Difference between local and remote state?
+Expected Keywords:
+- S3 backend
+- collaboration
+- state locking
+
+3. What are modules?
+Expected Keywords:
+- reusable code
+- standardization
+
+4. Difference between count and for_each?
+Expected Keywords:
+- indexing
+- map/set iteration
+
+5. What happens during terraform plan?
+Expected Keywords:
+- execution preview
+- drift detection
+
+6. What is state locking?
+Expected Keywords:
+- prevent concurrent changes
+- DynamoDB locking
+
+7. Explain workspaces.
+Expected Keywords:
+- multiple environments
+- dev/stage/prod
+
+8. How do you avoid Terraform drift?
+Expected Keywords:
+- regular plan
+- import/manual change detection
+
+9. Explain lifecycle rules.
+Expected Keywords:
+- prevent_destroy
+- ignore_changes
+- create_before_destroy
+
+10. Have you written reusable modules?
+Expected Keywords:
+- VPC/EKS/RDS modules
+- variables/outputs
+
+--------------------------------------------------------------------------------
+
+CI/CD
+=====
+
+1. Explain CI/CD.
+Expected Keywords:
+- continuous integration
+- continuous deployment/delivery
+- automation
+
+2. Difference between Declarative and Scripted Jenkins pipeline?
+Expected Keywords:
+- syntax
+- flexibility
+- maintainability
+
+3. What stages are included in pipelines?
+Expected Keywords:
+- build
+- test
+- scan
+- deploy
+
+4. Explain Blue/Green deployment.
+Expected Keywords:
+- zero downtime
+- two environments
+- switch traffic
+
+5. Difference between Canary and Blue/Green?
+Expected Keywords:
+- gradual rollout
+- percentage traffic
+- monitoring
+
+6. How do you rollback failed deployments?
+Expected Keywords:
+- previous image/tag
+- automated rollback
+- Kubernetes rollout undo
+
+7. How do you secure pipelines?
+Expected Keywords:
+- secrets management
+- RBAC
+- scanning
+
+8. How do you manage Docker image versions?
+Expected Keywords:
+- tagging strategy
+- semantic versioning
+- latest vs stable
+
+9. How do you reduce downtime during deployment?
+Expected Keywords:
+- rolling updates
+- readiness probes
+- autoscaling
+
+10. Explain GitOps.
+Expected Keywords:
+- ArgoCD/Flux
+- Git as source of truth
+
+--------------------------------------------------------------------------------
+
+KUBERNETES & DEPLOYMENTS
+========================
+
+1. Difference between Deployment, StatefulSet, and DaemonSet?
+Expected Keywords:
+- stateless
+- persistent workloads
+- one pod per node
+
+2. Explain readiness vs liveness probes.
+Expected Keywords:
+- traffic readiness
+- health checking
+- restart unhealthy pods
+
+3. How do you debug CrashLoopBackOff?
+Expected Keywords:
+- kubectl logs
+- describe pod
+- events
+- resource issues
+
+4. What happens when a node becomes NotReady?
+Expected Keywords:
+- pod rescheduling
+- node health
+- cluster recovery
+
+5. Explain ingress controller.
+Expected Keywords:
+- external traffic routing
+- NGINX ingress
+- load balancing
+
+6. Explain Kubernetes rolling updates.
+Expected Keywords:
+- zero downtime
+- gradual pod replacement
+
+7. How do you monitor Kubernetes?
+Expected Keywords:
+- Prometheus
+- Grafana
+- CloudWatch
+
+8. Explain service discovery in Kubernetes.
+Expected Keywords:
+- ClusterIP
+- DNS
+- kube-dns/CoreDNS
+
+--------------------------------------------------------------------------------
+
+AWS & CLOUD
+============
+
+1. Difference between ECS and EKS?
+Expected Keywords:
+- container orchestration
+- Kubernetes
+- AWS managed services
+
+2. Explain VPC components.
+Expected Keywords:
+- subnets
+- route tables
+- NAT gateway
+- internet gateway
+
+3. What is Auto Scaling?
+Expected Keywords:
+- dynamic scaling
+- HA
+- policies
+
+4. Explain Route 53 routing policies.
+Expected Keywords:
+- latency
+- weighted
+- failover
+
+5. Explain CloudWatch.
+Expected Keywords:
+- monitoring
+- logs
+- metrics
+- alarms
+
+6. Explain IAM best practices.
+Expected Keywords:
+- least privilege
+- roles
+- MFA
+
+7. Explain multi-region architecture.
+Expected Keywords:
+- DR
+- high availability
+- replication
+
+--------------------------------------------------------------------------------
+
+HIGH-SIGNAL REAL EXPERIENCE QUESTIONS
+=====================================
+
+1. Walk me through a production incident you handled.
+Expected Keywords:
+- RCA
+- debugging
+- logs/metrics
+- mitigation
+- prevention
+
+2. Explain your biggest migration project.
+Expected Keywords:
+- planning
+- downtime reduction
+- rollback
+- stakeholder communication
+
+3. Describe a deployment failure you fixed.
+Expected Keywords:
+- troubleshooting
+- rollback
+- monitoring
+
+4. What automation saved the most manual effort?
+Expected Keywords:
+- scripting
+- CI/CD
+- infrastructure automation
+
+================================================================================
