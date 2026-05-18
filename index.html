@@ -1,41 +1,307 @@
-Hi, I’m Kshitij Bombarde. I work as an Automation Engineer focused on BI and process automation. My experience includes building automation solutions using technologies like Ansible and Python to streamline operational and reporting processes.
+import requests
+import csv
+import json
+from collections import defaultdict
 
-Ansible
-How did you structure Ansible roles for large-scale environments?
-Check: reusable roles, inventories, group_vars, environment separation.
-Explain a complex automation you built using Ansible.
-Check: real use case, error handling, scaling, idempotency.
-How do you manage secrets across multiple environments?
-Check: Vault, Jenkins secrets, AWS Secrets Manager, RBAC.
-How do you troubleshoot failed playbooks in production?
-Check: verbose logs, failed tasks, retry logic, debugging approach.
-How do you integrate Ansible with CI/CD pipelines?
-Check: Jenkins/GitLab integration, automated deployments, approvals.
-Python
-Explain a real automation framework or script you developed.
-Check: modularity, logging, APIs, scheduling, maintainability.
-How do you optimize slow Python scripts?
-Check: profiling, multiprocessing, efficient data structures.
-Explain multithreading vs asyncio vs multiprocessing with use cases.
-Check: practical production examples.
-How do you structure enterprise-level Python projects?
-Check: packages, virtual env, requirements, logging, config management.
-How do you handle API retries, failures, and timeouts in automation?
-Check: retry mechanism, exception handling, resilience.
-CI/CD
-Design a CI/CD pipeline for a microservices application.
-Check: build, test, docker, scan, deploy, rollback, monitoring.
-How do you secure CI/CD pipelines?
-Check: secrets management, RBAC, artifact signing, vulnerability scanning.
-Explain a production deployment failure you handled.
-Check: ownership, RCA, rollback, communication.
-How do you implement blue-green or canary deployment?
-Check: zero downtime concepts, traffic shifting, rollback.
-How do you reduce deployment time in pipelines?
-Check: caching, parallel jobs, optimized builds, incremental deployment.
-Strong Follow-Up Questions
-“Why did you choose this approach?”
-“What challenges did you face?”
-“How did you scale it?”
-“How did you monitor failures?”
-“What would you improve now?”
+# =========================================================
+# CONFIGURATION
+# =========================================================
+
+BASE_URL = "http://<BASE_URL>/v1"
+
+# Example:
+# BASE_URL = "http://bo-server:6405/biprws/v1"
+
+LOGON_TOKEN = "ENTER_YOUR_LOGON_TOKEN"
+
+OUTPUT_CSV = "scheduled_reports_instances.csv"
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "X-SAP-LOGONTOKEN": LOGON_TOKEN
+}
+
+# =========================================================
+# CMS QUERY FUNCTION
+# =========================================================
+
+def cms_query(query):
+    url = f"{BASE_URL}/cmsquery"
+
+    payload = {
+        "query": query
+    }
+
+    response = requests.post(
+        url,
+        headers=HEADERS,
+        json=payload,
+        verify=False
+    )
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+# =========================================================
+# GET ALL FOLDERS
+# =========================================================
+
+def get_folders():
+    query = """
+    SELECT SI_ID, SI_NAME, SI_PARENTID
+    FROM CI_INFOOBJECTS
+    WHERE SI_KIND = 'Folder'
+    """
+
+    data = cms_query(query)
+
+    folders = {}
+
+    for obj in data.get("entries", []):
+        props = obj.get("properties", {})
+
+        folder_id = props.get("SI_ID")
+        folders[folder_id] = {
+            "name": props.get("SI_NAME"),
+            "parent_id": props.get("SI_PARENTID")
+        }
+
+    return folders
+
+
+# =========================================================
+# BUILD FOLDER PATH
+# =========================================================
+
+def build_folder_path(parent_id, folders):
+    path_parts = []
+
+    while parent_id and parent_id in folders:
+        folder = folders[parent_id]
+
+        path_parts.insert(0, folder["name"])
+
+        parent_id = folder["parent_id"]
+
+    return "/" + "/".join(path_parts)
+
+
+# =========================================================
+# GET REPORT INSTANCES
+# =========================================================
+
+def get_report_instances():
+
+    query = """
+    SELECT
+        SI_ID,
+        SI_NAME,
+        SI_OWNER,
+        SI_AUTHOR,
+        SI_DESCRIPTION,
+        SI_PARENTID,
+        SI_CREATION_TIME,
+        SI_UPDATE_TS,
+        SI_NEXTRUNTIME,
+        SI_STARTTIME,
+        SI_ENDTIME,
+        SI_RECURRING,
+        SI_SCHEDULE_STATUS,
+        SI_SCHEDULEINFO,
+        SI_FILES,
+        SI_UNIVERSE
+    FROM CI_INFOOBJECTS
+    WHERE SI_INSTANCE = 1
+    """
+
+    data = cms_query(query)
+
+    return data.get("entries", [])
+
+
+# =========================================================
+# STATUS MAPPING
+# =========================================================
+
+STATUS_MAP = {
+    0: "Pending",
+    1: "Running",
+    2: "Success",
+    3: "Failed",
+    8: "Paused"
+}
+
+
+# =========================================================
+# SAFE NESTED ACCESS
+# =========================================================
+
+def safe_get(d, *keys):
+    current = d
+
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+
+        current = current.get(key)
+
+        if current is None:
+            return None
+
+    return current
+
+
+# =========================================================
+# EXTRACT DESTINATIONS
+# =========================================================
+
+def extract_destinations(schedule_info):
+
+    disk_destination = ""
+    ftp_destination = ""
+
+    try:
+        destinations = schedule_info.get("SI_DESTINATIONS", {})
+
+        # Disk destination
+        disk = destinations.get("DiskUnmanaged", {})
+        if disk:
+            disk_destination = disk.get("SI_DEST_PATH", "")
+
+        # FTP destination
+        ftp = destinations.get("FTP", {})
+        if ftp:
+            ftp_server = ftp.get("SI_FTP_SERVER_NAME", "")
+            ftp_path = ftp.get("SI_REMOTE_DIR", "")
+
+            ftp_destination = f"{ftp_server}:{ftp_path}"
+
+    except Exception:
+        pass
+
+    return disk_destination, ftp_destination
+
+
+# =========================================================
+# MAIN
+# =========================================================
+
+def main():
+
+    print("Fetching folders...")
+    folders = get_folders()
+
+    print("Fetching report instances...")
+    instances = get_report_instances()
+
+    rows = []
+
+    for entry in instances:
+
+        props = entry.get("properties", {})
+
+        schedule_info = props.get("SI_SCHEDULEINFO", {})
+
+        parent_id = props.get("SI_PARENTID")
+
+        folder_path = build_folder_path(parent_id, folders)
+
+        # Size extraction
+        size = safe_get(
+            props,
+            "SI_FILES",
+            "SI_FILE1",
+            "SI_SIZE"
+        )
+
+        # Status
+        status_code = props.get("SI_SCHEDULE_STATUS")
+        status = STATUS_MAP.get(status_code, str(status_code))
+
+        # Recurrence
+        recurrence = schedule_info.get("SI_SCHEDULE_TYPE")
+
+        # Universe
+        universe = props.get("SI_UNIVERSE")
+
+        # Retries
+        retries = schedule_info.get("SI_RETRY_COUNT")
+
+        # Retry Interval
+        retry_interval = schedule_info.get("SI_RETRY_INTERVAL")
+
+        # Destinations
+        disk_destination, ftp_destination = extract_destinations(schedule_info)
+
+        row = {
+            "Report Name": props.get("SI_NAME"),
+            "ID": props.get("SI_ID"),
+            "Owner": props.get("SI_OWNER"),
+            "Author": props.get("SI_AUTHOR"),
+            "Description": props.get("SI_DESCRIPTION"),
+            "FolderPath": folder_path,
+            "Size": size,
+            "Status": status,
+            "Recurrence": recurrence,
+            "Schedule Begin": props.get("SI_STARTTIME"),
+            "Schedule End": props.get("SI_ENDTIME"),
+            "NextRun Time": props.get("SI_NEXTRUNTIME"),
+            "Universe": universe,
+            "Creation Date": props.get("SI_CREATION_TIME"),
+            "Changed Date": props.get("SI_UPDATE_TS"),
+            "Retries": retries,
+            "Retry Interval": retry_interval,
+            "Disk Destination": disk_destination,
+            "FTP Destination": ftp_destination
+        }
+
+        rows.append(row)
+
+    # =====================================================
+    # WRITE CSV
+    # =====================================================
+
+    print(f"Writing {OUTPUT_CSV}...")
+
+    with open(OUTPUT_CSV, mode="w", newline="", encoding="utf-8") as csv_file:
+
+        fieldnames = [
+            "Report Name",
+            "ID",
+            "Owner",
+            "Author",
+            "Description",
+            "FolderPath",
+            "Size",
+            "Status",
+            "Recurrence",
+            "Schedule Begin",
+            "Schedule End",
+            "NextRun Time",
+            "Universe",
+            "Creation Date",
+            "Changed Date",
+            "Retries",
+            "Retry Interval",
+            "Disk Destination",
+            "FTP Destination"
+        ]
+
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+        writer.writeheader()
+
+        writer.writerows(rows)
+
+    print("Done!")
+
+
+# =========================================================
+# ENTRYPOINT
+# =========================================================
+
+if __name__ == "__main__":
+    main()
