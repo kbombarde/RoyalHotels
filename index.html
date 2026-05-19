@@ -5,11 +5,10 @@ import requests
 # =========================================================
 
 BASE_URL = "http://your-bo-server:6405/biprws"
+
 USERNAME = "administrator"
 PASSWORD = "password"
 AUTH_TYPE = "secEnterprise"
-
-ROOT_FOLDER_CUID = "YOUR_ROOT_CUID"
 
 # =========================================================
 # GLOBAL STRUCTURES
@@ -20,6 +19,8 @@ object_map = {}
 
 name_map = {}
 parent_map = {}
+
+visited_folders = set()
 
 # =========================================================
 # LOGIN
@@ -51,27 +52,17 @@ def login():
     }
 
 # =========================================================
-# GET ROOT FOLDER
+# GET ALL FOLDERS
 # =========================================================
 
-def get_folder_by_cuid(headers, cuid):
+def get_all_folders(headers):
 
     url = f"{BASE_URL}/folders"
 
-    response = requests.get(
-        url,
-        headers=headers,
-        params={"cuid": cuid}
-    )
-
+    response = requests.get(url, headers=headers)
     response.raise_for_status()
 
-    entries = response.json().get("entries", [])
-
-    if not entries:
-        return None
-
-    return entries[0]
+    return response.json().get("entries", [])
 
 # =========================================================
 # GET CHILDREN
@@ -90,23 +81,45 @@ def get_children(headers, folder_id):
 # RECURSIVE TRAVERSAL
 # =========================================================
 
-def traverse_folder(headers, folder_id, folder_cuid, parent_cuid=None):
+def traverse_folder(headers, folder):
+
+    folder_id = folder.get("id")
+    folder_cuid = folder.get("cuid")
+    folder_name = folder.get("name")
+
+    if not folder_cuid:
+        return
+
+    # Avoid loops / duplicate traversal
+    if folder_cuid in visited_folders:
+        return
+
+    visited_folders.add(folder_cuid)
+
+    # Initialize folder node
+    if folder_cuid not in folder_tree:
+
+        folder_tree[folder_cuid] = {
+            "name": folder_name,
+            "children_folders": [],
+            "children_objects": []
+        }
+
+    name_map[folder_cuid] = folder_name
+
+    print(f"\n[FOLDER] {folder_name}")
+
+    # =====================================================
+    # GET CHILDREN
+    # =====================================================
 
     children = get_children(headers, folder_id)
-
-    folder_tree[folder_cuid] = {
-        "name": name_map[folder_cuid],
-        "parent": parent_cuid,
-        "children_folders": [],
-        "children_objects": []
-    }
 
     for child in children:
 
         child_type = child.get("type", "").lower()
         child_name = child.get("name")
         child_cuid = child.get("cuid")
-        child_id = child.get("id")
 
         if not child_cuid:
             continue
@@ -115,21 +128,16 @@ def traverse_folder(headers, folder_id, folder_cuid, parent_cuid=None):
         parent_map[child_cuid] = folder_cuid
 
         # =================================================
-        # FOLDER
+        # SUB FOLDER
         # =================================================
 
         if child_type == "folder":
 
-            folder_tree[folder_cuid]["children_folders"].append(child_cuid)
-
-            print(f"[FOLDER] {child_name}")
-
-            traverse_folder(
-                headers,
-                child_id,
-                child_cuid,
-                folder_cuid
+            folder_tree[folder_cuid]["children_folders"].append(
+                child_cuid
             )
+
+            traverse_folder(headers, child)
 
         # =================================================
         # OBJECT
@@ -137,7 +145,9 @@ def traverse_folder(headers, folder_id, folder_cuid, parent_cuid=None):
 
         else:
 
-            folder_tree[folder_cuid]["children_objects"].append(child_cuid)
+            folder_tree[folder_cuid]["children_objects"].append(
+                child_cuid
+            )
 
             object_map[child_cuid] = {
                 "name": child_name,
@@ -178,32 +188,34 @@ def main():
 
     headers = login()
 
-    root = get_folder_by_cuid(headers, ROOT_FOLDER_CUID)
+    print("\nFetching all folders...\n")
 
-    if not root:
-        print("Root folder not found")
-        return
+    folders = get_all_folders(headers)
 
-    root_id = root["id"]
-    root_cuid = root["cuid"]
-    root_name = root["name"]
+    print(f"Total folders received: {len(folders)}")
 
-    name_map[root_cuid] = root_name
+    # =====================================================
+    # TRAVERSE EACH ROOT FOLDER
+    # =====================================================
 
-    print(f"\nStarting traversal from: {root_name}\n")
+    for folder in folders:
 
-    traverse_folder(
-        headers,
-        root_id,
-        root_cuid
-    )
+        try:
+            traverse_folder(headers, folder)
+
+        except Exception as e:
+            print(f"Error processing folder: {e}")
 
     print("\n===================================")
-    print("Traversal Complete")
+    print("INDEXING COMPLETE")
     print("===================================\n")
 
     print(f"Folders Indexed : {len(folder_tree)}")
     print(f"Objects Indexed : {len(object_map)}")
+
+    # =====================================================
+    # SEARCH LOOP
+    # =====================================================
 
     while True:
 
@@ -215,7 +227,7 @@ def main():
         path = get_complete_path(cuid)
 
         if path:
-            print(f"\nPATH:\n{path}")
+            print(f"\nFULL PATH:\n{path}")
         else:
             print("CUID not found")
 
