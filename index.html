@@ -1,379 +1,225 @@
-DEVOPS / CLOUD / AUTOMATION INTERVIEW QUESTIONS WITH EXPECTED ANSWERS & KEYWORDS
-================================================================================
-
-PYTHON
-======
-
-1. Difference between list, tuple, and set?
-Expected Keywords:
-- List = mutable, ordered
-- Tuple = immutable
-- Set = unique values, unordered
-- Use cases and performance differences
-
-2. What is a Python decorator?
-Expected Keywords:
-- Wrapper function
-- Extends functionality
-- @decorator syntax
-- Logging/authentication examples
-
-3. Difference between multithreading and multiprocessing?
-Expected Keywords:
-- Thread vs Process
-- GIL
-- CPU-bound vs I/O-bound
-- Parallelism
-
-4. How do you handle exceptions?
-Expected Keywords:
-- try/except/finally
-- custom exceptions
-- logging errors
-
-5. How would you parse logs and extract ERROR lines?
-Expected Keywords:
-- file handling
-- regex/string matching
-- loops
-- automation mindset
-
-6. How would you automate AWS tasks using Python?
-Expected Keywords:
-- boto3
-- EC2/S3 automation
-- Lambda
-- monitoring scripts
-
-7. Explain virtual environments.
-Expected Keywords:
-- dependency isolation
-- venv
-- pip requirements
-
-8. Show a real Python automation project.
-Expected Keywords:
-- reusable scripts
-- scheduling
-- monitoring
-- API integrations
-
---------------------------------------------------------------------------------
-
-ANSIBLE
-========
-
-1. What is Ansible?
-Expected Keywords:
-- agentless
-- SSH based
-- automation/configuration management
-
-2. Difference between playbook and role?
-Expected Keywords:
-- playbook = execution
-- role = reusable structure
-
-3. What is idempotency?
-Expected Keywords:
-- repeatable execution
-- no duplicate changes
-- desired state
-
-4. Difference between shell and command module?
-Expected Keywords:
-- shell supports operators/pipes
-- command is safer
-
-5. Explain inventory files.
-Expected Keywords:
-- static inventory
-- dynamic inventory
-- host grouping
-
-6. What are handlers?
-Expected Keywords:
-- triggered tasks
-- service restart after changes
-
-7. Explain Jinja2 templating.
-Expected Keywords:
-- variables
-- templates
-- dynamic configs
-
-8. How do you manage secrets?
-Expected Keywords:
-- Ansible Vault
-- encrypted variables
-
-9. What is Ansible Galaxy?
-Expected Keywords:
-- reusable roles
-- collections
-
-10. How would you patch 500 servers safely?
-Expected Keywords:
-- rolling deployment
-- serial execution
-- validation
-- rollback
-
---------------------------------------------------------------------------------
-
-TERRAFORM
-==========
-
-1. What is Terraform state?
-Expected Keywords:
-- infrastructure mapping
-- tfstate
-- tracking resources
-
-2. Difference between local and remote state?
-Expected Keywords:
-- S3 backend
-- collaboration
-- state locking
-
-3. What are modules?
-Expected Keywords:
-- reusable code
-- standardization
-
-4. Difference between count and for_each?
-Expected Keywords:
-- indexing
-- map/set iteration
-
-5. What happens during terraform plan?
-Expected Keywords:
-- execution preview
-- drift detection
-
-6. What is state locking?
-Expected Keywords:
-- prevent concurrent changes
-- DynamoDB locking
-
-7. Explain workspaces.
-Expected Keywords:
-- multiple environments
-- dev/stage/prod
-
-8. How do you avoid Terraform drift?
-Expected Keywords:
-- regular plan
-- import/manual change detection
-
-9. Explain lifecycle rules.
-Expected Keywords:
-- prevent_destroy
-- ignore_changes
-- create_before_destroy
-
-10. Have you written reusable modules?
-Expected Keywords:
-- VPC/EKS/RDS modules
-- variables/outputs
-
---------------------------------------------------------------------------------
-
-CI/CD
-=====
-
-1. Explain CI/CD.
-Expected Keywords:
-- continuous integration
-- continuous deployment/delivery
-- automation
-
-2. Difference between Declarative and Scripted Jenkins pipeline?
-Expected Keywords:
-- syntax
-- flexibility
-- maintainability
-
-3. What stages are included in pipelines?
-Expected Keywords:
-- build
-- test
-- scan
-- deploy
-
-4. Explain Blue/Green deployment.
-Expected Keywords:
-- zero downtime
-- two environments
-- switch traffic
-
-5. Difference between Canary and Blue/Green?
-Expected Keywords:
-- gradual rollout
-- percentage traffic
-- monitoring
-
-6. How do you rollback failed deployments?
-Expected Keywords:
-- previous image/tag
-- automated rollback
-- Kubernetes rollout undo
-
-7. How do you secure pipelines?
-Expected Keywords:
-- secrets management
-- RBAC
-- scanning
-
-8. How do you manage Docker image versions?
-Expected Keywords:
-- tagging strategy
-- semantic versioning
-- latest vs stable
-
-9. How do you reduce downtime during deployment?
-Expected Keywords:
-- rolling updates
-- readiness probes
-- autoscaling
-
-10. Explain GitOps.
-Expected Keywords:
-- ArgoCD/Flux
-- Git as source of truth
-
---------------------------------------------------------------------------------
-
-KUBERNETES & DEPLOYMENTS
-========================
-
-1. Difference between Deployment, StatefulSet, and DaemonSet?
-Expected Keywords:
-- stateless
-- persistent workloads
-- one pod per node
-
-2. Explain readiness vs liveness probes.
-Expected Keywords:
-- traffic readiness
-- health checking
-- restart unhealthy pods
-
-3. How do you debug CrashLoopBackOff?
-Expected Keywords:
-- kubectl logs
-- describe pod
-- events
-- resource issues
-
-4. What happens when a node becomes NotReady?
-Expected Keywords:
-- pod rescheduling
-- node health
-- cluster recovery
-
-5. Explain ingress controller.
-Expected Keywords:
-- external traffic routing
-- NGINX ingress
-- load balancing
-
-6. Explain Kubernetes rolling updates.
-Expected Keywords:
-- zero downtime
-- gradual pod replacement
-
-7. How do you monitor Kubernetes?
-Expected Keywords:
-- Prometheus
-- Grafana
-- CloudWatch
-
-8. Explain service discovery in Kubernetes.
-Expected Keywords:
-- ClusterIP
-- DNS
-- kube-dns/CoreDNS
-
---------------------------------------------------------------------------------
-
-AWS & CLOUD
-============
-
-1. Difference between ECS and EKS?
-Expected Keywords:
-- container orchestration
-- Kubernetes
-- AWS managed services
-
-2. Explain VPC components.
-Expected Keywords:
-- subnets
-- route tables
-- NAT gateway
-- internet gateway
-
-3. What is Auto Scaling?
-Expected Keywords:
-- dynamic scaling
-- HA
-- policies
-
-4. Explain Route 53 routing policies.
-Expected Keywords:
-- latency
-- weighted
-- failover
-
-5. Explain CloudWatch.
-Expected Keywords:
-- monitoring
-- logs
-- metrics
-- alarms
-
-6. Explain IAM best practices.
-Expected Keywords:
-- least privilege
-- roles
-- MFA
-
-7. Explain multi-region architecture.
-Expected Keywords:
-- DR
-- high availability
-- replication
-
---------------------------------------------------------------------------------
-
-HIGH-SIGNAL REAL EXPERIENCE QUESTIONS
-=====================================
-
-1. Walk me through a production incident you handled.
-Expected Keywords:
-- RCA
-- debugging
-- logs/metrics
-- mitigation
-- prevention
-
-2. Explain your biggest migration project.
-Expected Keywords:
-- planning
-- downtime reduction
-- rollback
-- stakeholder communication
-
-3. Describe a deployment failure you fixed.
-Expected Keywords:
-- troubleshooting
-- rollback
-- monitoring
-
-4. What automation saved the most manual effort?
-Expected Keywords:
-- scripting
-- CI/CD
-- infrastructure automation
-
-================================================================================
+import requests
+
+# =========================================================
+# CONFIG
+# =========================================================
+
+BASE_URL = "http://your-bo-server:6405/biprws"
+USERNAME = "administrator"
+PASSWORD = "password"
+AUTH_TYPE = "secEnterprise"
+
+ROOT_FOLDER_CUID = "YOUR_ROOT_CUID"
+
+# =========================================================
+# GLOBAL STRUCTURES
+# =========================================================
+
+folder_tree = {}
+object_map = {}
+
+name_map = {}
+parent_map = {}
+
+# =========================================================
+# LOGIN
+# =========================================================
+
+def login():
+
+    url = f"{BASE_URL}/logon/long"
+
+    payload = {
+        "userName": USERNAME,
+        "password": PASSWORD,
+        "auth": AUTH_TYPE
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    response.raise_for_status()
+
+    token = response.json()["logonToken"]
+
+    return {
+        "X-SAP-LogonToken": token,
+        "Accept": "application/json"
+    }
+
+# =========================================================
+# GET ROOT FOLDER
+# =========================================================
+
+def get_folder_by_cuid(headers, cuid):
+
+    url = f"{BASE_URL}/folders"
+
+    response = requests.get(
+        url,
+        headers=headers,
+        params={"cuid": cuid}
+    )
+
+    response.raise_for_status()
+
+    entries = response.json().get("entries", [])
+
+    if not entries:
+        return None
+
+    return entries[0]
+
+# =========================================================
+# GET CHILDREN
+# =========================================================
+
+def get_children(headers, folder_id):
+
+    url = f"{BASE_URL}/folders/{folder_id}/children"
+
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+
+    return response.json().get("entries", [])
+
+# =========================================================
+# RECURSIVE TRAVERSAL
+# =========================================================
+
+def traverse_folder(headers, folder_id, folder_cuid, parent_cuid=None):
+
+    children = get_children(headers, folder_id)
+
+    folder_tree[folder_cuid] = {
+        "name": name_map[folder_cuid],
+        "parent": parent_cuid,
+        "children_folders": [],
+        "children_objects": []
+    }
+
+    for child in children:
+
+        child_type = child.get("type", "").lower()
+        child_name = child.get("name")
+        child_cuid = child.get("cuid")
+        child_id = child.get("id")
+
+        if not child_cuid:
+            continue
+
+        name_map[child_cuid] = child_name
+        parent_map[child_cuid] = folder_cuid
+
+        # =================================================
+        # FOLDER
+        # =================================================
+
+        if child_type == "folder":
+
+            folder_tree[folder_cuid]["children_folders"].append(child_cuid)
+
+            print(f"[FOLDER] {child_name}")
+
+            traverse_folder(
+                headers,
+                child_id,
+                child_cuid,
+                folder_cuid
+            )
+
+        # =================================================
+        # OBJECT
+        # =================================================
+
+        else:
+
+            folder_tree[folder_cuid]["children_objects"].append(child_cuid)
+
+            object_map[child_cuid] = {
+                "name": child_name,
+                "type": child_type,
+                "parent_folder": folder_cuid
+            }
+
+            print(f"   └── [{child_type.upper()}] {child_name}")
+
+# =========================================================
+# BUILD COMPLETE PATH
+# =========================================================
+
+def get_complete_path(cuid):
+
+    if cuid not in name_map:
+        return None
+
+    path_parts = []
+
+    current = cuid
+
+    while current:
+
+        path_parts.append(name_map[current])
+
+        current = parent_map.get(current)
+
+    path_parts.reverse()
+
+    return "/" + "/".join(path_parts)
+
+# =========================================================
+# MAIN
+# =========================================================
+
+def main():
+
+    headers = login()
+
+    root = get_folder_by_cuid(headers, ROOT_FOLDER_CUID)
+
+    if not root:
+        print("Root folder not found")
+        return
+
+    root_id = root["id"]
+    root_cuid = root["cuid"]
+    root_name = root["name"]
+
+    name_map[root_cuid] = root_name
+
+    print(f"\nStarting traversal from: {root_name}\n")
+
+    traverse_folder(
+        headers,
+        root_id,
+        root_cuid
+    )
+
+    print("\n===================================")
+    print("Traversal Complete")
+    print("===================================\n")
+
+    print(f"Folders Indexed : {len(folder_tree)}")
+    print(f"Objects Indexed : {len(object_map)}")
+
+    while True:
+
+        cuid = input("\nEnter CUID (or exit): ").strip()
+
+        if cuid.lower() == "exit":
+            break
+
+        path = get_complete_path(cuid)
+
+        if path:
+            print(f"\nPATH:\n{path}")
+        else:
+            print("CUID not found")
+
+# =========================================================
+
+if __name__ == "__main__":
+    main()
