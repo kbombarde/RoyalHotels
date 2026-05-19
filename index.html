@@ -1,237 +1,628 @@
+import csv
 import requests
+from pprint import pprint
 
 # =========================================================
 # CONFIG
 # =========================================================
 
-BASE_URL = "http://your-bo-server:6405/biprws"
+BASE_URL = "http://your-bo-server:6405"
 
 USERNAME = "administrator"
 PASSWORD = "password"
 AUTH_TYPE = "secEnterprise"
 
-# =========================================================
-# GLOBAL STRUCTURES
-# =========================================================
-
-folder_tree = {}
-object_map = {}
-
-name_map = {}
-parent_map = {}
-
-visited_folders = set()
+OUTPUT_CSV = "bo_schedule_report.csv"
 
 # =========================================================
-# LOGIN
+# STATUS MAP
 # =========================================================
 
-def login():
-
-    url = f"{BASE_URL}/logon/long"
-
-    payload = {
-        "userName": USERNAME,
-        "password": PASSWORD,
-        "auth": AUTH_TYPE
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-
-    response = requests.post(url, json=payload, headers=headers)
-    response.raise_for_status()
-
-    token = response.json()["logonToken"]
-
-    return {
-        "X-SAP-LogonToken": token,
-        "Accept": "application/json"
-    }
+STATUS_MAP = {
+    0: "Pending",
+    1: "Running",
+    2: "Success",
+    3: "Failed",
+    4: "Paused",
+    5: "Retry",
+    8: "Recurring",
+    9: "Scheduled"
+}
 
 # =========================================================
-# GET ALL FOLDERS
+# CLIENT
 # =========================================================
 
-def get_all_folders(headers):
+class BusinessObjectsClient:
 
-    url = f"{BASE_URL}/folders"
+    def __init__(self):
 
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
+        self.headers = self.login()
 
-    return response.json().get("entries", [])
+        self.folder_tree = {}
+        self.folder_name_map = {}
+        self.folder_parent_map = {}
 
-# =========================================================
-# GET CHILDREN
-# =========================================================
+        self.visited_folders = set()
 
-def get_children(headers, folder_id):
+    # =====================================================
+    # LOGIN
+    # =====================================================
 
-    url = f"{BASE_URL}/folders/{folder_id}/children"
+    def login(self):
 
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
+        url = f"{BASE_URL}/biprws/logon/long"
 
-    return response.json().get("entries", [])
+        payload = {
+            "userName": USERNAME,
+            "password": PASSWORD,
+            "auth": AUTH_TYPE
+        }
 
-# =========================================================
-# RECURSIVE TRAVERSAL
-# =========================================================
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
 
-def traverse_folder(headers, folder):
+        response = requests.post(
+            url,
+            json=payload,
+            headers=headers
+        )
 
-    folder_id = folder.get("id")
-    folder_cuid = folder.get("cuid")
-    folder_name = folder.get("name")
+        response.raise_for_status()
 
-    if not folder_cuid:
-        return
+        token = response.json()["logonToken"]
 
-    # Avoid loops / duplicate traversal
-    if folder_cuid in visited_folders:
-        return
+        return {
+            "X-SAP-LogonToken": token,
+            "Accept": "application/json"
+        }
 
-    visited_folders.add(folder_cuid)
+    # =====================================================
+    # BUILD FOLDER MAP
+    # =====================================================
 
-    # Initialize folder node
-    if folder_cuid not in folder_tree:
+    def build_folder_map(self):
 
-        folder_tree[folder_cuid] = {
+        print("Building folder map...")
+
+        url = f"{BASE_URL}/biprws/v1/folders"
+
+        response = requests.get(
+            url,
+            headers=self.headers
+        )
+
+        response.raise_for_status()
+
+        folders = response.json().get(
+            "entries",
+            []
+        )
+
+        for folder in folders:
+            self._traverse_folder(folder)
+
+        print(
+            f"Folder map complete. "
+            f"Total folders indexed: "
+            f"{len(self.folder_tree)}"
+        )
+
+    # =====================================================
+    # RECURSIVE TRAVERSAL
+    # =====================================================
+
+    def _traverse_folder(self, folder):
+
+        folder_id = folder.get("id")
+        folder_cuid = folder.get("cuid")
+        folder_name = folder.get("name")
+
+        if not folder_cuid:
+            return
+
+        if folder_cuid in self.visited_folders:
+            return
+
+        self.visited_folders.add(folder_cuid)
+
+        self.folder_name_map[
+            folder_cuid
+        ] = folder_name
+
+        self.folder_tree[folder_cuid] = {
+            "id": folder_id,
             "name": folder_name,
             "children_folders": [],
             "children_objects": []
         }
 
-    name_map[folder_cuid] = folder_name
+        children = self._get_children(folder_id)
 
-    print(f"\n[FOLDER] {folder_name}")
+        for child in children:
+
+            child_type = str(
+                child.get("type", "")
+            ).lower()
+
+            child_cuid = child.get("cuid")
+            child_name = child.get("name")
+
+            if not child_cuid:
+                continue
+
+            self.folder_name_map[
+                child_cuid
+            ] = child_name
+
+            self.folder_parent_map[
+                child_cuid
+            ] = folder_cuid
+
+            # =============================================
+            # SUB FOLDER
+            # =============================================
+
+            if child_type == "folder":
+
+                self.folder_tree[
+                    folder_cuid
+                ][
+                    "children_folders"
+                ].append(child_cuid)
+
+                self._traverse_folder(child)
+
+            # =============================================
+            # OBJECT
+            # =============================================
+
+            else:
+
+                self.folder_tree[
+                    folder_cuid
+                ][
+                    "children_objects"
+                ].append(child_cuid)
 
     # =====================================================
     # GET CHILDREN
     # =====================================================
 
-    children = get_children(headers, folder_id)
+    def _get_children(self, folder_id):
 
-    for child in children:
+        url = (
+            f"{BASE_URL}/biprws/v1/folders/"
+            f"{folder_id}/children"
+        )
 
-        child_type = child.get("type", "").lower()
-        child_name = child.get("name")
-        child_cuid = child.get("cuid")
+        response = requests.get(
+            url,
+            headers=self.headers
+        )
 
-        if not child_cuid:
-            continue
+        response.raise_for_status()
 
-        name_map[child_cuid] = child_name
-        parent_map[child_cuid] = folder_cuid
+        return response.json().get(
+            "entries",
+            []
+        )
 
-        # =================================================
-        # SUB FOLDER
-        # =================================================
+    # =====================================================
+    # GET PATH
+    # =====================================================
 
-        if child_type == "folder":
+    def get_folder_path(self, cuid):
 
-            folder_tree[folder_cuid]["children_folders"].append(
-                child_cuid
+        if cuid not in self.folder_name_map:
+            return None
+
+        path_parts = []
+
+        current = cuid
+
+        while current:
+
+            name = self.folder_name_map.get(
+                current
             )
 
-            traverse_folder(headers, child)
+            if name:
+                path_parts.append(name)
 
-        # =================================================
-        # OBJECT
-        # =================================================
-
-        else:
-
-            folder_tree[folder_cuid]["children_objects"].append(
-                child_cuid
+            current = self.folder_parent_map.get(
+                current
             )
 
-            object_map[child_cuid] = {
-                "name": child_name,
-                "type": child_type,
-                "parent_folder": folder_cuid
+        path_parts.reverse()
+
+        return "/" + "/".join(path_parts)
+
+    # =====================================================
+    # EXECUTE CMS QUERY
+    # =====================================================
+
+    def execute_cms_query(self, query):
+
+        print("Executing CMS Query...")
+
+        url = f"{BASE_URL}/biprws/v1/cmsquery"
+
+        payload = {
+            "query": query
+        }
+
+        all_records = []
+
+        page = 1
+        pagesize = 1000
+
+        while True:
+
+            params = {
+                "page": page,
+                "pagesize": pagesize
             }
 
-            print(f"   └── [{child_type.upper()}] {child_name}")
+            response = requests.post(
+                url,
+                json=payload,
+                params=params,
+                headers=self.headers
+            )
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            entries = data.get(
+                "entries",
+                []
+            )
+
+            if not entries:
+                break
+
+            all_records.extend(entries)
+
+            print(
+                f"Fetched Page {page} "
+                f"Records: {len(entries)}"
+            )
+
+            if len(entries) < pagesize:
+                break
+
+            page += 1
+
+        print(
+            f"Total CMS Records: "
+            f"{len(all_records)}"
+        )
+
+        return all_records
+
+    # =====================================================
+    # GET STATUS
+    # =====================================================
+
+    def get_status_value(self, code):
+
+        return STATUS_MAP.get(
+            code,
+            f"Unknown ({code})"
+        )
+
+    # =====================================================
+    # GET EXPIRY
+    # =====================================================
+
+    def get_expiry(
+        self,
+        parent_id,
+        instance_id
+    ):
+
+        try:
+
+            url = (
+                f"{BASE_URL}/biprws/v1/documents/"
+                f"{parent_id}/schedules/"
+                f"{instance_id}"
+            )
+
+            response = requests.get(
+                url,
+                headers=self.headers
+            )
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            return data.get("expiry")
+
+        except:
+            return None
+
+    # =====================================================
+    # GET RECURRENCE
+    # =====================================================
+
+    def get_recurrence(
+        self,
+        parent_id,
+        instance_id
+    ):
+
+        try:
+
+            url = (
+                f"{BASE_URL}/biprws/raylight/v1/"
+                f"documents/{parent_id}/"
+                f"schedules/{instance_id}"
+            )
+
+            response = requests.get(
+                url,
+                headers=self.headers
+            )
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            return (
+                data.get("recurrence")
+                or data.get("description")
+                or data.get("schedule")
+            )
+
+        except:
+            return None
+
+    # =====================================================
+    # BUILD SCHEMA
+    # =====================================================
+
+    def build_record_schema(self, record):
+
+        status_code = record.get(
+            "SI_UISTATUS"
+        )
+
+        parent_id = record.get(
+            "SI_PARENTID"
+        )
+
+        instance_id = record.get(
+            "SI_ID"
+        )
+
+        recurrence = None
+
+        if status_code == 9:
+
+            recurrence = self.get_recurrence(
+                parent_id,
+                instance_id
+            )
+
+        return {
+
+            "id":
+                record.get("SI_ID"),
+
+            "cuid":
+                record.get("SI_CUID"),
+
+            "name":
+                record.get("SI_NAME"),
+
+            "type":
+                record.get("SI_KIND"),
+
+            "status_code":
+                status_code,
+
+            "status":
+                self.get_status_value(
+                    status_code
+                ),
+
+            "location":
+                self.get_folder_path(
+                    record.get("SI_CUID")
+                ),
+
+            "author":
+                record.get("SI_AUTHOR"),
+
+            "owner":
+                record.get("SI_OWNER"),
+
+            "creation_time":
+                record.get(
+                    "SI_CREATION_TIME"
+                ),
+
+            "endtime":
+                record.get(
+                    "SI_ENDTIME"
+                ),
+
+            "starttime":
+                record.get(
+                    "SI_STARTTIME"
+                ),
+
+            "nextruntime":
+                record.get(
+                    "SI_NEXTRUNTIME"
+                ),
+
+            "recurrence":
+                recurrence,
+
+            "expiry":
+                self.get_expiry(
+                    parent_id,
+                    instance_id
+                ),
+
+            "server":
+                (
+                    record.get(
+                        "SI_SCHEDULEINFO",
+                        {}
+                    ).get(
+                        "SI_MACHINEUSED"
+                    )
+                ),
+
+            "error":
+                (
+                    record.get(
+                        "SI_STATUSINFO",
+                        {}
+                    ).get(
+                        "SI_SUBST_STRINGS"
+                    )
+                )
+        }
+
+    # =====================================================
+    # EXPORT CSV
+    # =====================================================
+
+    def export_to_csv(
+        self,
+        records,
+        output_file
+    ):
+
+        if not records:
+            print("No records to export")
+            return
+
+        print(
+            f"Exporting CSV: "
+            f"{output_file}"
+        )
+
+        headers = records[0].keys()
+
+        with open(
+            output_file,
+            mode="w",
+            newline="",
+            encoding="utf-8"
+        ) as csvfile:
+
+            writer = csv.DictWriter(
+                csvfile,
+                fieldnames=headers
+            )
+
+            writer.writeheader()
+
+            for row in records:
+                writer.writerow(row)
+
+        print(
+            f"CSV Export Complete: "
+            f"{output_file}"
+        )
 
 # =========================================================
-# BUILD COMPLETE PATH
+# CMS QUERY
 # =========================================================
 
-def get_complete_path(cuid):
-
-    if cuid not in name_map:
-        return None
-
-    path_parts = []
-
-    current = cuid
-
-    while current:
-
-        path_parts.append(name_map[current])
-
-        current = parent_map.get(current)
-
-    path_parts.reverse()
-
-    return "/" + "/".join(path_parts)
+CMS_QUERY = """
+SELECT
+    SI_ID,
+    SI_CUID,
+    SI_NAME,
+    SI_KIND,
+    SI_UISTATUS,
+    SI_AUTHOR,
+    SI_OWNER,
+    SI_CREATION_TIME,
+    SI_ENDTIME,
+    SI_STARTTIME,
+    SI_NEXTRUNTIME,
+    SI_PARENTID,
+    SI_SCHEDULEINFO.SI_MACHINEUSED,
+    SI_STATUSINFO
+FROM
+    CI_APPOBJECTS,
+    CI_INFOOBJECTS,
+    CI_SYSTEMOBJECTS
+WHERE
+    SI_INSTANCE = 1
+"""
 
 # =========================================================
 # MAIN
 # =========================================================
 
-def main():
+if __name__ == "__main__":
 
-    headers = login()
-
-    print("\nFetching all folders...\n")
-
-    folders = get_all_folders(headers)
-
-    print(f"Total folders received: {len(folders)}")
+    client = BusinessObjectsClient()
 
     # =====================================================
-    # TRAVERSE EACH ROOT FOLDER
+    # STEP 1
     # =====================================================
 
-    for folder in folders:
+    client.build_folder_map()
+
+    # =====================================================
+    # STEP 2
+    # =====================================================
+
+    cms_records = client.execute_cms_query(
+        CMS_QUERY
+    )
+
+    # =====================================================
+    # STEP 3
+    # =====================================================
+
+    final_records = []
+
+    for record in cms_records:
 
         try:
-            traverse_folder(headers, folder)
+
+            schema = client.build_record_schema(
+                record
+            )
+
+            final_records.append(schema)
 
         except Exception as e:
-            print(f"Error processing folder: {e}")
 
-    print("\n===================================")
-    print("INDEXING COMPLETE")
-    print("===================================\n")
-
-    print(f"Folders Indexed : {len(folder_tree)}")
-    print(f"Objects Indexed : {len(object_map)}")
+            print(
+                f"Schema build failed: {e}"
+            )
 
     # =====================================================
-    # SEARCH LOOP
+    # STEP 4
     # =====================================================
 
-    while True:
+    client.export_to_csv(
+        final_records,
+        OUTPUT_CSV
+    )
 
-        cuid = input("\nEnter CUID (or exit): ").strip()
+    # =====================================================
+    # SAMPLE
+    # =====================================================
 
-        if cuid.lower() == "exit":
-            break
+    if final_records:
 
-        path = get_complete_path(cuid)
+        print("\nSample Record:\n")
 
-        if path:
-            print(f"\nFULL PATH:\n{path}")
-        else:
-            print("CUID not found")
-
-# =========================================================
-
-if __name__ == "__main__":
-    main()
+        pprint(final_records[0])
